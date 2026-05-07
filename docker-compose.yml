@@ -22,10 +22,10 @@ services:
     container_name: streamlit
     working_dir: /app
     volumes:
-      - ./streamlit_app:/app
+      - ./:/app
     command: >
-      bash -c "pip install streamlit pymodbus requests &&
-               streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
+      bash -c "pip install streamlit pymodbus==2.5.3 requests influxdb-client &&
+               streamlit run streamlit_app/app.py --server.port=8501 --server.address=0.0.0.0"
     ports:
       - "8501:8501"
     restart: always
