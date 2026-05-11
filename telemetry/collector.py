@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from pymodbus.client.sync import ModbusTcpClient
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ------------------------------------------------
 # PLC SETTINGS
@@ -18,15 +21,13 @@ PLC_PORT = 5020
 # INFLUXDB SETTINGS
 # ------------------------------------------------
 
-INFLUXDB_URL = "http://localhost:8086"
+INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
+INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "ICS")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "plc_telemetry")
 
-INFLUXDB_TOKEN = os.getenv(
-    "INFLUXDB_TOKEN",
-    "jX1affClkisLMFeqMXgSvA0HmrWMarQVFgOOcLTCLSmlv4kzYmx3ausHvHpcqpP-PQte1nY9W4SQGUZdMthcrw=="
-)
-
-INFLUXDB_ORG = "ICS"
-INFLUXDB_BUCKET = "plc_telemetry"
+if not INFLUXDB_TOKEN:
+    raise ValueError("INFLUXDB_TOKEN не знайдено. Перевір файл .env")
 
 
 def read_plc_state():
