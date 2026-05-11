@@ -1,0 +1,53 @@
+{
+  "scenario_id": "beginner_modbus_injection",
+  "title": "Beginner Scenario: Modbus Command Injection",
+  "level": "Beginner",
+  "description": "Навчальний сценарій демонструє, як несанкціонований запис у Modbus-регістр може змінити стан промислового обладнання.",
+  "goal": "Зрозуміти, як атака Modbus Command Injection впливає на PLC та як оператор має реагувати на інцидент.",
+  "normal_state": {
+    "temperature": "0-80",
+    "pressure": "1-15",
+    "water_level": "10-90",
+    "pump_status": "1 - насос увімкнений"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "title": "Перевірити нормальний стан системи",
+      "description": "Оператор перевіряє температуру, тиск, рівень води та стан насоса."
+    },
+    {
+      "step": 2,
+      "title": "Запустити Modbus Command Injection",
+      "description": "Атакуючий записує значення 0 у register 3, який відповідає за стан насоса."
+    },
+    {
+      "step": 3,
+      "title": "Виявити аномалію",
+      "description": "Система повинна визначити, що насос був вимкнений несанкціоновано."
+    },
+    {
+      "step": 4,
+      "title": "Виконати відновлення",
+      "description": "Оператор запускає recovery-процедуру для повернення системи до безпечного стану."
+    }
+  ],
+  "attack": {
+    "name": "Pump OFF Attack",
+    "type": "Modbus Command Injection",
+    "target_register": 3,
+    "malicious_value": 0,
+    "expected_effect": "Насос переходить у стан OFF, після чого тиск і рівень води починають знижуватися."
+  },
+  "question": {
+    "text": "Яка правильна дія оператора після виявлення несанкціонованого вимкнення насоса?",
+    "options": [
+      "Ігнорувати зміну стану насоса",
+      "Запустити перевірку аномалій та recovery-процедуру",
+      "Вимкнути Grafana",
+      "Видалити telemetry collector"
+    ],
+    "correct_answer": 1,
+    "explanation": "Після виявлення атаки оператор має перевірити аномалії, оцінити стан PLC та виконати recovery, щоб повернути систему до безпечного стану."
+  }
+}

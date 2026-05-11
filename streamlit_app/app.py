@@ -1,5 +1,6 @@
 import os
 import time
+import json
 
 import streamlit as st
 from pymodbus.client.sync import ModbusTcpClient
@@ -38,6 +39,20 @@ NORMAL_STATE = {
 # ------------------------------------------------
 # MODBUS HELPERS
 # ------------------------------------------------
+
+def load_training_scenario(path="scenarios/beginner.json"):
+    """
+    Завантаження навчального сценарію з JSON-файлу.
+    """
+
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
+    
 
 def get_client():
     """
@@ -177,6 +192,8 @@ def run_false_data_injection(duration=10):
         time.sleep(1)
 
     progress.progress(100)
+
+    
 
 
 # ------------------------------------------------
@@ -322,3 +339,92 @@ st.markdown(
     5. **Recovery** — система повертається до нормального стану.
     """
 )
+
+# ------------------------------------------------
+# EDUCATIONAL MODE
+# ------------------------------------------------
+
+st.header("5. Educational Mode — навчальний сценарій")
+
+scenario = load_training_scenario()
+
+if scenario is None:
+    st.error("Не вдалося завантажити сценарій scenarios/beginner.json")
+else:
+    st.subheader(scenario["title"])
+
+    st.write(f"**Рівень:** {scenario['level']}")
+    st.write(f"**Опис:** {scenario['description']}")
+    st.write(f"**Мета:** {scenario['goal']}")
+
+    st.markdown("### Нормальний стан системи")
+
+    normal_state = scenario["normal_state"]
+
+    st.write(f"- Температура: {normal_state['temperature']}")
+    st.write(f"- Тиск: {normal_state['pressure']}")
+    st.write(f"- Рівень води: {normal_state['water_level']}")
+    st.write(f"- Стан насоса: {normal_state['pump_status']}")
+
+    st.markdown("### Кроки сценарію")
+
+    for step in scenario["steps"]:
+        st.write(f"**Крок {step['step']}. {step['title']}**")
+        st.write(step["description"])
+
+    st.markdown("### Практична частина")
+
+    col_edu1, col_edu2, col_edu3 = st.columns(3)
+
+    with col_edu1:
+        if st.button("Educational: Check PLC State"):
+            edu_state, _, edu_error = read_plc_state()
+
+            if edu_error:
+                st.error(edu_error)
+            else:
+                st.success("Поточний стан PLC:")
+                st.write(edu_state)
+
+    with col_edu2:
+        if st.button("Educational: Run Attack"):
+            ok, message = write_register(
+                scenario["attack"]["target_register"],
+                scenario["attack"]["malicious_value"]
+            )
+
+            if ok:
+                st.error("Навчальна атака виконана: насос примусово вимкнено")
+            else:
+                st.error(message)
+
+    with col_edu3:
+        if st.button("Educational: Recover"):
+            errors = recover_system()
+
+            if errors:
+                st.error("Recovery failed")
+                for err in errors:
+                    st.write(f"- {err}")
+            else:
+                st.success("Система відновлена")
+
+    st.markdown("### Контрольне питання")
+
+    question = scenario["question"]
+
+    selected_option = st.radio(
+        question["text"],
+        question["options"],
+        key="educational_question"
+    )
+
+    if st.button("Перевірити відповідь"):
+        selected_index = question["options"].index(selected_option)
+
+        if selected_index == question["correct_answer"]:
+            st.success("Правильно")
+        else:
+            st.error("Неправильно")
+
+        st.info(question["explanation"])
