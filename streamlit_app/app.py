@@ -1,9 +1,16 @@
 import os
+import sys
 import time
 import json
 
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import pandas as pd
 import streamlit as st
 from pymodbus.client.sync import ModbusTcpClient
+
+from utils.event_logger import log_event, read_logs
 
 
 # ------------------------------------------------
@@ -12,8 +19,6 @@ from pymodbus.client.sync import ModbusTcpClient
 
 PLC_PORT = 5020
 
-# Якщо Streamlit запущений у Docker, він звертається до хоста через host.docker.internal.
-# Якщо запускаєш Streamlit локально, буде використано fallback на 127.0.0.1.
 PLC_HOSTS = [
     os.getenv("PLC_HOST", "host.docker.internal"),
     "127.0.0.1",
@@ -37,7 +42,7 @@ NORMAL_STATE = {
 
 
 # ------------------------------------------------
-# MODBUS HELPERS
+# TRAINING SCENARIO
 # ------------------------------------------------
 
 def load_training_scenario(path="scenarios/beginner.json"):
@@ -52,7 +57,11 @@ def load_training_scenario(path="scenarios/beginner.json"):
         return None
     except json.JSONDecodeError:
         return None
-    
+
+
+# ------------------------------------------------
+# MODBUS HELPERS
+# ------------------------------------------------
 
 def get_client():
     """
@@ -193,11 +202,17 @@ def run_false_data_injection(duration=10):
 
     progress.progress(100)
 
-    
+    final_state, _, _ = read_plc_state()
+
+    log_event(
+        event_type="FALSE_DATA_INJECTION",
+        description=f"False Data Injection виконано протягом {duration} секунд",
+        state=final_state
+    )
 
 
 # ------------------------------------------------
-# UI
+# UI CONFIG
 # ------------------------------------------------
 
 st.set_page_config(
@@ -238,6 +253,17 @@ if state:
     )
 
 if st.button("Refresh PLC Status"):
+    current_state, _, current_error = read_plc_state()
+
+    if current_error:
+        st.error(current_error)
+    else:
+        log_event(
+            event_type="PLC_STATUS_READ",
+            description="Користувач оновив стан PLC",
+            state=current_state
+        )
+
     st.rerun()
 
 
@@ -259,7 +285,15 @@ with col_attack1:
     if st.button("Run Pump OFF Attack"):
         ok, message = write_register(3, 0)
 
+        current_state, _, _ = read_plc_state()
+
         if ok:
+            log_event(
+                event_type="MODBUS_COMMAND_INJECTION",
+                description="Атака виконана: насос примусово вимкнено",
+                state=current_state
+            )
+
             st.error("Attack executed: Pump forced OFF")
         else:
             st.error(message)
@@ -299,10 +333,22 @@ with col_def1:
             alerts = detect_anomalies(current_state)
 
             if alerts:
+                log_event(
+                    event_type="ANOMALY_DETECTION",
+                    description="Виявлено аномалії: " + "; ".join(alerts),
+                    state=current_state
+                )
+
                 st.error("Anomalies detected:")
                 for alert in alerts:
                     st.write(f"- {alert}")
             else:
+                log_event(
+                    event_type="ANOMALY_DETECTION",
+                    description="Аномалій не виявлено",
+                    state=current_state
+                )
+
                 st.success("System status: normal")
 
 with col_def2:
@@ -311,11 +357,19 @@ with col_def2:
     if st.button("Recover System"):
         errors = recover_system()
 
+        current_state, _, _ = read_plc_state()
+
         if errors:
             st.error("Recovery failed:")
             for err in errors:
                 st.write(f"- {err}")
         else:
+            log_event(
+                event_type="RECOVERY_EXECUTED",
+                description="Система відновлена до нормального стану",
+                state=current_state
+            )
+
             st.success("System recovered to normal state")
 
 
@@ -339,6 +393,10 @@ st.markdown(
     5. **Recovery** — система повертається до нормального стану.
     """
 )
+
+
+st.divider()
+
 
 # ------------------------------------------------
 # EDUCATIONAL MODE
@@ -383,6 +441,12 @@ else:
             if edu_error:
                 st.error(edu_error)
             else:
+                log_event(
+                    event_type="EDUCATIONAL_STATUS_READ",
+                    description="У навчальному режимі перевірено стан PLC",
+                    state=edu_state
+                )
+
                 st.success("Поточний стан PLC:")
                 st.write(edu_state)
 
@@ -393,7 +457,15 @@ else:
                 scenario["attack"]["malicious_value"]
             )
 
+            current_state, _, _ = read_plc_state()
+
             if ok:
+                log_event(
+                    event_type="EDUCATIONAL_ATTACK",
+                    description="Навчальна атака виконана: насос примусово вимкнено",
+                    state=current_state
+                )
+
                 st.error("Навчальна атака виконана: насос примусово вимкнено")
             else:
                 st.error(message)
@@ -402,11 +474,19 @@ else:
         if st.button("Educational: Recover"):
             errors = recover_system()
 
+            current_state, _, _ = read_plc_state()
+
             if errors:
                 st.error("Recovery failed")
                 for err in errors:
                     st.write(f"- {err}")
             else:
+                log_event(
+                    event_type="EDUCATIONAL_RECOVERY",
+                    description="У навчальному режимі виконано відновлення системи",
+                    state=current_state
+                )
+
                 st.success("Система відновлена")
 
     st.markdown("### Контрольне питання")
@@ -422,9 +502,41 @@ else:
     if st.button("Перевірити відповідь"):
         selected_index = question["options"].index(selected_option)
 
+        current_state, _, _ = read_plc_state()
+
         if selected_index == question["correct_answer"]:
+            log_event(
+                event_type="EDUCATIONAL_ANSWER",
+                description="Користувач дав правильну відповідь у навчальному сценарії",
+                state=current_state
+            )
+
             st.success("Правильно")
         else:
+            log_event(
+                event_type="EDUCATIONAL_ANSWER",
+                description="Користувач дав неправильну відповідь у навчальному сценарії",
+                state=current_state
+            )
+
             st.error("Неправильно")
 
         st.info(question["explanation"])
+
+
+st.divider()
+
+
+# ------------------------------------------------
+# EVENT LOGS
+# ------------------------------------------------
+
+st.header("6. Simulation Event Logs")
+
+logs = read_logs(limit=30)
+
+if logs:
+    df_logs = pd.DataFrame(logs)
+    st.dataframe(df_logs, use_container_width=True)
+else:
+    st.info("Журнал подій поки порожній.")
