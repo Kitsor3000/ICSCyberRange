@@ -2,11 +2,12 @@ import os
 import sys
 import time
 import json
+import random
 from pathlib import Path
+from html import escape
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import pandas as pd
 import streamlit as st
 from pymodbus.client.sync import ModbusTcpClient
 
@@ -114,6 +115,27 @@ SYSTEMS = {
 }
 
 
+SYSTEM_BY_TAG = {
+    # Pump Station
+    "temperature": "Pump Station",
+    "pressure": "Pump Station",
+    "water_level": "Pump Station",
+    "pump_status": "Pump Station",
+
+    # Conveyor Line
+    "conveyor_status": "Conveyor Line",
+    "motor_speed": "Conveyor Line",
+    "motor_current": "Conveyor Line",
+    "emergency_stop": "Conveyor Line",
+
+    # Cooling System
+    "fan_status": "Cooling System",
+    "coolant_temperature": "Cooling System",
+    "valve_position": "Cooling System",
+    "cooling_alarm": "Cooling System",
+}
+
+
 ATTACKS = [
     # Pump Station
     {
@@ -200,6 +222,88 @@ ATTACKS = [
         "description": "Підміна температури охолоджуючої рідини.",
         "writes": [("coolant_temperature", 80)],
         "duration": 10,
+    },
+]
+
+
+TRAINING_QUESTIONS = [
+    {
+        "system": "Pump Station",
+        "question": "Який Modbus register відповідає за стан насоса?",
+        "options": ["0", "1", "2", "3"],
+        "answer": "3",
+        "explanation": "Register 3 відповідає за pump_status. 1 — насос увімкнений, 0 — вимкнений.",
+    },
+    {
+        "system": "Pump Station",
+        "question": "Що станеться, якщо записати 0 у pump_status?",
+        "options": [
+            "Насос вимкнеться",
+            "Конвеєр прискориться",
+            "Охолодження увімкнеться",
+            "Тиск стане нормальним",
+        ],
+        "answer": "Насос вимкнеться",
+        "explanation": "pump_status = 0 означає примусове вимкнення насоса.",
+    },
+    {
+        "system": "Pump Station",
+        "question": "Який параметр показує рівень води?",
+        "options": ["pressure", "water_level", "motor_speed", "cooling_alarm"],
+        "answer": "water_level",
+        "explanation": "water_level показує рівень води в резервуарі насосної станції.",
+    },
+    {
+        "system": "Conveyor Line",
+        "question": "Який параметр відповідає за швидкість конвеєра?",
+        "options": ["motor_speed", "pressure", "fan_status", "valve_position"],
+        "answer": "motor_speed",
+        "explanation": "motor_speed показує швидкість двигуна конвеєра. Норма — 40–100%.",
+    },
+    {
+        "system": "Conveyor Line",
+        "question": "Що означає emergency_stop = 1?",
+        "options": [
+            "Аварійна зупинка активна",
+            "Конвеєр працює нормально",
+            "Насос вимкнений",
+            "Температура в нормі",
+        ],
+        "answer": "Аварійна зупинка активна",
+        "explanation": "emergency_stop = 1 означає, що аварійна зупинка конвеєра активна.",
+    },
+    {
+        "system": "Conveyor Line",
+        "question": "Який параметр показує струм двигуна?",
+        "options": ["motor_current", "water_level", "coolant_temperature", "pump_status"],
+        "answer": "motor_current",
+        "explanation": "motor_current показує струм двигуна конвеєра в амперах.",
+    },
+    {
+        "system": "Cooling System",
+        "question": "Який register відповідає за вентилятор охолодження?",
+        "options": ["8", "9", "10", "11"],
+        "answer": "8",
+        "explanation": "Register 8 — це fan_status. 1 — вентилятор ON, 0 — OFF.",
+    },
+    {
+        "system": "Cooling System",
+        "question": "Що означає cooling_alarm = 1?",
+        "options": [
+            "У системі охолодження аварія",
+            "Насос працює нормально",
+            "Конвеєр вимкнений",
+            "Тиск у нормі",
+        ],
+        "answer": "У системі охолодження аварія",
+        "explanation": "cooling_alarm = 1 означає аварійний стан системи охолодження.",
+    },
+    {
+        "system": "Cooling System",
+        "question": "Який параметр відповідає за положення клапана?",
+        "options": ["valve_position", "pressure", "motor_current", "water_level"],
+        "answer": "valve_position",
+        "explanation": "valve_position показує, наскільки відкритий клапан охолодження.",
     },
 ]
 
@@ -434,12 +538,6 @@ def apply_custom_styles():
             font-weight: 750;
         }
 
-        div[data-testid="stDataFrame"] {
-            border-radius: 14px;
-            overflow: hidden;
-            border: 1px solid rgba(148, 163, 184, 0.18);
-        }
-
         .mobile-nav-label {
             display: none;
         }
@@ -563,7 +661,10 @@ def render_system_intro(system_name, system_config):
 
 def render_attack_card(attack):
     writes_text = "<br>".join(
-        [f"R{REGISTER_MAP[tag]}: <b>{tag}</b> → <b>{value}</b>" for tag, value in attack["writes"]]
+        [
+            f"R{REGISTER_MAP[tag]}: <b>{escape(tag)}</b> → <b>{value}</b>"
+            for tag, value in attack["writes"]
+        ]
     )
 
     duration_text = "Single write" if attack["duration"] == 0 else f"{attack['duration']} seconds"
@@ -571,9 +672,9 @@ def render_attack_card(attack):
     st.markdown(
         f"""
         <div class="attack-card danger">
-            <span class="attack-level">{attack['level']}</span>
-            <h3>{attack['name']}</h3>
-            <p>{attack['description']}</p>
+            <span class="attack-level">{escape(attack['level'])}</span>
+            <h3>{escape(attack['name'])}</h3>
+            <p>{escape(attack['description'])}</p>
             <p>{writes_text}</p>
             <p><b>Mode:</b> {duration_text}</p>
         </div>
@@ -592,9 +693,12 @@ apply_custom_styles()
 def get_client():
     for host in PLC_HOSTS:
         client = ModbusTcpClient(host, port=PLC_PORT)
+
         if client.connect():
             return client, host
+
         client.close()
+
     return None, None
 
 
@@ -630,6 +734,7 @@ def read_plc_state():
     }
 
     client.close()
+
     return state, host, None
 
 
@@ -640,7 +745,8 @@ def write_register(tag, value):
         return False, "Cannot connect to PLC"
 
     address = REGISTER_MAP[tag]
-    result = client.write_register(address, value, unit=1)
+    result = client.write_register(address, int(value), unit=1)
+
     client.close()
 
     if result.isError():
@@ -675,6 +781,33 @@ def run_repeated_write(writes, duration=10):
     progress.progress(100)
 
 
+def execute_attack(attack):
+    """
+    Запускає атаку.
+    Якщо duration = 0 — один запис у Modbus register.
+    Якщо duration > 0 — повторює запис кілька секунд.
+    """
+
+    if attack["duration"] > 0:
+        run_repeated_write(attack["writes"], duration=attack["duration"])
+    else:
+        for tag, value in attack["writes"]:
+            ok, message = write_register(tag, value)
+
+            if not ok:
+                return False, message
+
+    current_state, _, _ = read_plc_state()
+
+    log_event(
+        event_type=attack["event"],
+        description=f"Запущено атаку: {attack['name']}",
+        state=current_state
+    )
+
+    return True, f"Attack executed: {attack['name']}"
+
+
 # ------------------------------------------------
 # BLUE TEAM LOGIC
 # ------------------------------------------------
@@ -686,11 +819,14 @@ def detect_anomalies(state):
         min_value, max_value = NORMAL_RANGES[tag]
 
         if value < min_value or value > max_value:
+            system_name = SYSTEM_BY_TAG.get(tag, "Unknown System")
+
             alerts.append({
+                "system": system_name,
                 "tag": tag,
                 "value": value,
                 "normal_range": f"{min_value} - {max_value}",
-                "message": f"{tag} = {value}, норма: {min_value} - {max_value}",
+                "message": f"{system_name}: {tag} = {value}, норма: {min_value} - {max_value}",
             })
 
     return alerts
@@ -717,24 +853,30 @@ def get_system_status(state):
 def recover_pump_station():
     for tag in ["temperature", "pressure", "water_level", "pump_status"]:
         ok, message = write_register(tag, NORMAL_STATE[tag])
+
         if not ok:
             return False, message
+
     return True, "Pump Station recovered"
 
 
 def recover_conveyor_line():
     for tag in ["conveyor_status", "motor_speed", "motor_current", "emergency_stop"]:
         ok, message = write_register(tag, NORMAL_STATE[tag])
+
         if not ok:
             return False, message
+
     return True, "Conveyor Line recovered"
 
 
 def recover_cooling_system():
     for tag in ["fan_status", "coolant_temperature", "valve_position", "cooling_alarm"]:
         ok, message = write_register(tag, NORMAL_STATE[tag])
+
         if not ok:
             return False, message
+
     return True, "Cooling System recovered"
 
 
@@ -747,6 +889,7 @@ def recover_full_system():
 
     for recovery_function in recovery_functions:
         ok, message = recovery_function()
+
         if not ok:
             return False, message
 
@@ -756,10 +899,13 @@ def recover_full_system():
 def recover_by_system(system_name):
     if system_name == "Pump Station":
         return recover_pump_station()
+
     if system_name == "Conveyor Line":
         return recover_conveyor_line()
+
     if system_name == "Cooling System":
         return recover_cooling_system()
+
     return recover_full_system()
 
 
@@ -772,20 +918,9 @@ def generate_pdf_report_safe():
         from reports.pdf_report import generate_pdf_report
         generate_pdf_report()
         return True, "reports/simulation_report.pdf"
+
     except Exception as error:
         return False, str(error)
-
-
-# ------------------------------------------------
-# TRAINING SCENARIO
-# ------------------------------------------------
-
-def load_training_scenario(path="scenarios/beginner.json"):
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except Exception:
-        return None
 
 
 # ------------------------------------------------
@@ -898,6 +1033,7 @@ if page == "Overview":
 
         if alerts:
             st.warning(f"Detected anomalies: {len(alerts)}")
+
             for alert in alerts:
                 st.write(f"- {alert['message']}")
         else:
@@ -905,24 +1041,8 @@ if page == "Overview":
 
         st.divider()
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("Refresh PLC Status"):
-                current_state, _, current_error = read_plc_state()
-                if current_error:
-                    st.error(current_error)
-                else:
-                    log_event(
-                        event_type="PLC_STATUS_READ",
-                        description="Користувач оновив стан PLC",
-                        state=current_state
-                    )
-                    st.rerun()
-
-        with col2:
-            if st.button("Open Grafana Info"):
-                st.info("Grafana dashboard: http://localhost:3000")
+        if st.button("Open Grafana Info"):
+            st.info("Grafana dashboard: http://localhost:3000")
 
 
 # ------------------------------------------------
@@ -934,6 +1054,27 @@ elif page == "Systems":
         "⬡ Industrial Systems Dashboard",
         "Поточний стан Pump Station, Conveyor Line та Cooling System."
     )
+
+    top_col1, top_col2 = st.columns([1, 2])
+
+    with top_col1:
+        if st.button("Refresh PLC Status"):
+            current_state, _, current_error = read_plc_state()
+
+            if current_error:
+                st.error(current_error)
+            else:
+                log_event(
+                    event_type="PLC_STATUS_READ",
+                    description="Користувач оновив стан PLC на сторінці Systems",
+                    state=current_state
+                )
+                st.rerun()
+
+    with top_col2:
+        st.info("Ця сторінка показує поточний стан усіх трьох промислових підсистем.")
+
+    st.divider()
 
     if error:
         st.error(error)
@@ -948,12 +1089,14 @@ elif page == "Systems":
                 value = state[tag]
 
                 status_class = "normal"
+
                 if value < min_value or value > max_value:
                     status_class = "danger"
 
                 label = tag.replace("_", " ").title()
 
                 unit = ""
+
                 if "temperature" in tag:
                     unit = "°C"
                 elif tag == "pressure":
@@ -1001,7 +1144,10 @@ elif page == "Red Team":
         list(SYSTEMS.keys())
     )
 
-    system_attacks = [attack for attack in ATTACKS if attack["system"] == selected_system]
+    system_attacks = [
+        attack for attack in ATTACKS
+        if attack["system"] == selected_system
+    ]
 
     cols = st.columns(3)
 
@@ -1009,22 +1155,76 @@ elif page == "Red Team":
         with cols[index]:
             render_attack_card(attack)
 
-            if st.button(f"Run: {attack['name']}"):
-                if attack["duration"] > 0:
-                    run_repeated_write(attack["writes"], duration=attack["duration"])
+            if st.button(f"Run: {attack['name']}", key=f"run_{attack['event']}"):
+                ok, message = execute_attack(attack)
+
+                if ok:
+                    st.error(message)
                 else:
-                    for tag, value in attack["writes"]:
-                        write_register(tag, value)
+                    st.error(message)
 
-                current_state, _, _ = read_plc_state()
+    st.divider()
 
-                log_event(
-                    event_type=attack["event"],
-                    description=f"Запущено атаку: {attack['name']}",
-                    state=current_state
-                )
+    st.subheader("Custom Simple Attack")
 
-                st.error(f"Attack executed: {attack['name']}")
+    st.markdown(
+        """
+        <div class="info-box">
+        Тут користувач може створити просту власну атаку:
+        вибрати параметр PLC, значення і тривалість запису.
+        Це працює тільки в навчальному середовищі ICSCyberRange.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    custom_col1, custom_col2, custom_col3 = st.columns(3)
+
+    with custom_col1:
+        custom_tag = st.selectbox(
+            "Target parameter",
+            list(REGISTER_MAP.keys())
+        )
+
+    with custom_col2:
+        custom_value = st.number_input(
+            "Value to write",
+            min_value=0,
+            max_value=999,
+            value=0,
+            step=1
+        )
+
+    with custom_col3:
+        custom_duration = st.slider(
+            "Duration, seconds",
+            min_value=0,
+            max_value=20,
+            value=0
+        )
+
+    custom_description = st.text_input(
+        "Custom attack description",
+        value=f"Custom attack on {custom_tag}"
+    )
+
+    if st.button("Run Custom Attack"):
+        custom_attack = {
+            "system": SYSTEM_BY_TAG[custom_tag],
+            "name": "Custom Simple Attack",
+            "level": "Custom",
+            "event": "CUSTOM_ATTACK",
+            "description": custom_description,
+            "writes": [(custom_tag, int(custom_value))],
+            "duration": int(custom_duration),
+        }
+
+        ok, message = execute_attack(custom_attack)
+
+        if ok:
+            st.error(message)
+        else:
+            st.error(message)
 
 
 # ------------------------------------------------
@@ -1062,6 +1262,7 @@ elif page == "Blue Team":
                     st.error(current_error)
                 else:
                     alerts = detect_anomalies(current_state)
+                    st.session_state["last_alerts"] = alerts
 
                     if alerts:
                         log_event(
@@ -1071,6 +1272,7 @@ elif page == "Blue Team":
                         )
 
                         st.error("Anomalies detected:")
+
                         for alert in alerts:
                             st.write(f"- {alert['message']}")
                     else:
@@ -1083,7 +1285,7 @@ elif page == "Blue Team":
                         st.success("System status: normal")
 
         with col2:
-            st.subheader("Recovery")
+            st.subheader("Manual Recovery")
 
             st.markdown(
                 """
@@ -1112,6 +1314,110 @@ elif page == "Blue Team":
                     st.success(message)
                 else:
                     st.error(message)
+
+        st.divider()
+
+        st.subheader("Recommended Fixes")
+
+        last_alerts = st.session_state.get("last_alerts", [])
+
+        if last_alerts:
+            affected_systems = sorted(set(alert["system"] for alert in last_alerts))
+
+            for system_name in affected_systems:
+                st.markdown(
+                    f"""
+                    <div class="info-box">
+                    <b>{system_name}</b><br>
+                    У цій підсистемі виявлено проблему. Рекомендована дія: recovery для {system_name}.
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                if st.button(f"Recover {system_name}", key=f"recover_recommended_{system_name}"):
+                    ok, message = recover_by_system(system_name)
+                    current_state, _, _ = read_plc_state()
+
+                    if ok:
+                        log_event(
+                            event_type="RECOMMENDED_RECOVERY",
+                            description=f"Виконано рекомендоване recovery для {system_name}",
+                            state=current_state
+                        )
+                        st.success(message)
+                    else:
+                        st.error(message)
+        else:
+            st.info("Спочатку запусти Anomaly Detection.")
+
+        st.divider()
+
+        st.subheader("Custom Simple Defense Rule")
+
+        st.markdown(
+            """
+            <div class="info-box">
+            Тут користувач може створити просте правило захисту:
+            вибрати параметр, мінімальне і максимальне нормальне значення.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        defense_col1, defense_col2, defense_col3 = st.columns(3)
+
+        with defense_col1:
+            defense_tag = st.selectbox(
+                "Parameter to check",
+                list(REGISTER_MAP.keys()),
+                key="custom_defense_tag"
+            )
+
+        with defense_col2:
+            defense_min = st.number_input(
+                "Min normal value",
+                min_value=0,
+                max_value=999,
+                value=0,
+                step=1
+            )
+
+        with defense_col3:
+            defense_max = st.number_input(
+                "Max normal value",
+                min_value=0,
+                max_value=999,
+                value=100,
+                step=1
+            )
+
+        if st.button("Run Custom Defense Check"):
+            current_state, _, current_error = read_plc_state()
+
+            if current_error:
+                st.error(current_error)
+            else:
+                current_value = current_state[defense_tag]
+
+                if current_value < defense_min or current_value > defense_max:
+                    st.error(
+                        f"Custom rule alert: {defense_tag} = {current_value}, "
+                        f"норма: {defense_min} - {defense_max}"
+                    )
+
+                    log_event(
+                        event_type="CUSTOM_DEFENSE_ALERT",
+                        description=(
+                            f"Custom rule alert: {defense_tag} = {current_value}, "
+                            f"норма: {defense_min} - {defense_max}"
+                        ),
+                        state=current_state
+                    )
+                else:
+                    st.success(
+                        f"Custom rule passed: {defense_tag} = {current_value}"
+                    )
 
         st.divider()
 
@@ -1157,11 +1463,24 @@ elif page == "Blue Team":
         st.subheader("Recent Security Events")
 
         try:
-            logs = read_logs(limit=20)
+            logs = read_logs(limit=10)
 
             if logs:
-                df_logs = pd.DataFrame(logs)
-                st.dataframe(df_logs, width="stretch")
+                for event in reversed(logs):
+                    timestamp = escape(event.get("timestamp", ""))
+                    event_type = escape(event.get("event_type", ""))
+                    description = escape(event.get("description", ""))
+
+                    st.markdown(
+                        f"""
+                        <div class="log-box">
+                            <b>{event_type}</b><br>
+                            <span style="color:#94a3b8;">{timestamp}</span><br><br>
+                            {description}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
             else:
                 st.info("Журнал подій поки порожній.")
 
@@ -1173,17 +1492,17 @@ elif page == "Blue Team":
 
         st.subheader("Normal Operating Ranges")
 
-        rows = []
+        markdown_rows = [
+            "| Parameter | Register | Normal Min | Normal Max |",
+            "|---|---:|---:|---:|",
+        ]
 
         for tag, value_range in NORMAL_RANGES.items():
-            rows.append({
-                "Parameter": tag,
-                "Register": REGISTER_MAP[tag],
-                "Normal Min": value_range[0],
-                "Normal Max": value_range[1],
-            })
+            markdown_rows.append(
+                f"| `{tag}` | `{REGISTER_MAP[tag]}` | `{value_range[0]}` | `{value_range[1]}` |"
+            )
 
-        st.dataframe(pd.DataFrame(rows), width="stretch")
+        st.markdown("\n".join(markdown_rows))
 
 
 # ------------------------------------------------
@@ -1193,40 +1512,71 @@ elif page == "Blue Team":
 elif page == "Training":
     render_header(
         "✦ Training Mode",
-        "Коротке пояснення для користувача, який вперше працює з ICSCyberRange.",
+        "Перевірка знань користувача по всіх трьох промислових підсистемах.",
         variant="purple"
     )
 
     st.markdown(
         """
         <div class="info-box">
-        <b>Що це за програма?</b><br><br>
-        Це навчальний кіберполігон. Він імітує маленький віртуальний завод із трьома системами:
-        насосною станцією, конвеєром і охолодженням.
+        У цьому режимі система випадково обирає питання по Pump Station,
+        Conveyor Line або Cooling System. Користувач відповідає, а платформа
+        пояснює правильну відповідь.
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.subheader("Як користуватись")
+    if "training_question" not in st.session_state:
+        st.session_state["training_question"] = random.choice(TRAINING_QUESTIONS)
+
+    question = st.session_state["training_question"]
+
+    st.subheader(f"System: {question['system']}")
+    st.write(question["question"])
+
+    selected_answer = st.radio(
+        "Choose answer",
+        question["options"],
+        key="training_answer"
+    )
+
+    quiz_col1, quiz_col2 = st.columns(2)
+
+    with quiz_col1:
+        if st.button("Check Answer"):
+            if selected_answer == question["answer"]:
+                st.success("Правильно")
+                log_event(
+                    event_type="TRAINING_CORRECT_ANSWER",
+                    description=f"Правильна відповідь у Training Mode: {question['question']}",
+                    state=state
+                )
+            else:
+                st.error("Неправильно")
+                log_event(
+                    event_type="TRAINING_WRONG_ANSWER",
+                    description=f"Неправильна відповідь у Training Mode: {question['question']}",
+                    state=state
+                )
+
+            st.info(question["explanation"])
+
+    with quiz_col2:
+        if st.button("Next Random Question"):
+            st.session_state["training_question"] = random.choice(TRAINING_QUESTIONS)
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Short Guide")
 
     st.write(
         """
-        1. Відкрий **Systems** і подивись, чи всі параметри в нормі.
-        2. Перейди в **Red Team** і запусти одну атаку.
-        3. Перейди в **Blue Team** і запусти перевірку аномалій.
-        4. Натисни **Recovery**, щоб система повернулась у нормальний стан.
-        5. Створи PDF-звіт після завершення симуляції.
-        """
-    )
-
-    st.subheader("Що таке Modbus register?")
-
-    st.info(
-        """
-        Modbus register — це комірка памʼяті PLC.
-        Наприклад, register 3 відповідає за насос.
-        Якщо записати туди 0 — насос вимкнеться.
+        - Red Team запускає атаку.
+        - Blue Team знаходить проблему.
+        - Recovery повертає систему в норму.
+        - PDF Report зберігає результати симуляції.
         """
     )
 
