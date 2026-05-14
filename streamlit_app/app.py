@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+from pathlib import Path
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -13,7 +14,7 @@ from utils.event_logger import log_event, read_logs
 
 
 # ------------------------------------------------
-# PLC CONNECTION SETTINGS
+# PLC SETTINGS
 # ------------------------------------------------
 
 PLC_PORT = 5020
@@ -25,8 +26,29 @@ PLC_HOSTS = [
 
 
 # ------------------------------------------------
-# NORMAL RANGES
+# REGISTER MAP
 # ------------------------------------------------
+
+REGISTER_MAP = {
+    # Pump Station
+    "temperature": 0,
+    "pressure": 1,
+    "water_level": 2,
+    "pump_status": 3,
+
+    # Conveyor Line
+    "conveyor_status": 4,
+    "motor_speed": 5,
+    "motor_current": 6,
+    "emergency_stop": 7,
+
+    # Cooling System
+    "fan_status": 8,
+    "coolant_temperature": 9,
+    "valve_position": 10,
+    "cooling_alarm": 11,
+}
+
 
 NORMAL_RANGES = {
     # Pump Station
@@ -38,20 +60,148 @@ NORMAL_RANGES = {
     # Conveyor Line
     "conveyor_status": (1, 1),
     "motor_speed": (40, 100),
-    "item_count": (0, 9999),
+    "motor_current": (5, 25),
     "emergency_stop": (0, 0),
+
+    # Cooling System
+    "fan_status": (1, 1),
+    "coolant_temperature": (18, 40),
+    "valve_position": (30, 100),
+    "cooling_alarm": (0, 0),
 }
 
 
 NORMAL_STATE = {
+    # Pump Station
     "temperature": 28,
     "pressure": 5,
     "water_level": 60,
     "pump_status": 1,
+
+    # Conveyor Line
     "conveyor_status": 1,
     "motor_speed": 70,
+    "motor_current": 12,
     "emergency_stop": 0,
+
+    # Cooling System
+    "fan_status": 1,
+    "coolant_temperature": 28,
+    "valve_position": 70,
+    "cooling_alarm": 0,
 }
+
+
+SYSTEMS = {
+    "Pump Station": {
+        "variant": "pump",
+        "icon": "⌁",
+        "description": "Насосна станція: температура, тиск, рівень води та стан насоса.",
+        "tags": ["temperature", "pressure", "water_level", "pump_status"],
+    },
+    "Conveyor Line": {
+        "variant": "conveyor",
+        "icon": "⬡",
+        "description": "Конвеєрна лінія: стан конвеєра, швидкість двигуна, струм і аварійна зупинка.",
+        "tags": ["conveyor_status", "motor_speed", "motor_current", "emergency_stop"],
+    },
+    "Cooling System": {
+        "variant": "cooling",
+        "icon": "✦",
+        "description": "Система охолодження: вентилятор, температура охолоджувача, клапан і сигнал аварії.",
+        "tags": ["fan_status", "coolant_temperature", "valve_position", "cooling_alarm"],
+    },
+}
+
+
+ATTACKS = [
+    # Pump Station
+    {
+        "system": "Pump Station",
+        "name": "Pump OFF Attack",
+        "level": "Easy",
+        "event": "PUMP_OFF_ATTACK",
+        "description": "Несанкціоноване вимкнення насоса.",
+        "writes": [("pump_status", 0)],
+        "duration": 0,
+    },
+    {
+        "system": "Pump Station",
+        "name": "Pump False Data Injection",
+        "level": "Medium",
+        "event": "PUMP_FALSE_DATA_INJECTION",
+        "description": "Підміна температури та тиску насосної станції.",
+        "writes": [("temperature", 999), ("pressure", 0)],
+        "duration": 10,
+    },
+    {
+        "system": "Pump Station",
+        "name": "Water Level Spoofing",
+        "level": "Medium",
+        "event": "WATER_LEVEL_SPOOFING",
+        "description": "Підміна рівня води в резервуарі.",
+        "writes": [("water_level", 0)],
+        "duration": 10,
+    },
+
+    # Conveyor Line
+    {
+        "system": "Conveyor Line",
+        "name": "Conveyor Stop Attack",
+        "level": "Easy",
+        "event": "CONVEYOR_STOP_ATTACK",
+        "description": "Примусова зупинка конвеєра.",
+        "writes": [("conveyor_status", 0)],
+        "duration": 0,
+    },
+    {
+        "system": "Conveyor Line",
+        "name": "Motor Speed Overdrive",
+        "level": "Medium",
+        "event": "MOTOR_SPEED_OVERDRIVE",
+        "description": "Встановлення небезпечної швидкості двигуна.",
+        "writes": [("motor_speed", 120)],
+        "duration": 0,
+    },
+    {
+        "system": "Conveyor Line",
+        "name": "Emergency Stop Abuse",
+        "level": "Hard",
+        "event": "EMERGENCY_STOP_ABUSE",
+        "description": "Активація аварійної зупинки конвеєра.",
+        "writes": [("emergency_stop", 1)],
+        "duration": 0,
+    },
+
+    # Cooling System
+    {
+        "system": "Cooling System",
+        "name": "Fan Shutdown Attack",
+        "level": "Easy",
+        "event": "FAN_SHUTDOWN_ATTACK",
+        "description": "Вимкнення вентилятора охолодження.",
+        "writes": [("fan_status", 0)],
+        "duration": 0,
+    },
+    {
+        "system": "Cooling System",
+        "name": "Valve Manipulation Attack",
+        "level": "Medium",
+        "event": "VALVE_MANIPULATION_ATTACK",
+        "description": "Закриття клапана охолодження.",
+        "writes": [("valve_position", 0)],
+        "duration": 0,
+    },
+    {
+        "system": "Cooling System",
+        "name": "Cooling Temperature Spoofing",
+        "level": "Hard",
+        "event": "COOLING_TEMP_SPOOFING",
+        "description": "Підміна температури охолоджуючої рідини.",
+        "writes": [("coolant_temperature", 80)],
+        "duration": 10,
+    },
+]
 
 
 # ------------------------------------------------
@@ -66,7 +216,7 @@ st.set_page_config(
 
 
 # ------------------------------------------------
-# CUSTOM STYLES
+# DESIGN
 # ------------------------------------------------
 
 def apply_custom_styles():
@@ -75,14 +225,14 @@ def apply_custom_styles():
         <style>
         .stApp {
             background:
-                radial-gradient(circle at top left, rgba(37, 99, 235, 0.22), transparent 28%),
-                radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 30%),
-                linear-gradient(135deg, #020617 0%, #0f172a 45%, #111827 100%);
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.15), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(147, 51, 234, 0.13), transparent 30%),
+                linear-gradient(135deg, #020617 0%, #0f172a 48%, #111827 100%);
             color: #e5e7eb;
         }
 
         .block-container {
-            padding-top: 2rem;
+            padding-top: 1.4rem;
             padding-bottom: 2rem;
             max-width: 1400px;
         }
@@ -112,89 +262,85 @@ def apply_custom_styles():
             color: #e5e7eb !important;
         }
 
-        section[data-testid="stSidebar"] [role="radiogroup"] label {
-            padding: 8px 10px;
-            border-radius: 10px;
-            margin-bottom: 4px;
-        }
-
-        section[data-testid="stSidebar"] [role="radiogroup"] label:hover {
-            background: rgba(59, 130, 246, 0.16);
-        }
-
         .main-header {
-            padding: 26px 30px;
-            border-radius: 24px;
+            padding: 24px 28px;
+            border-radius: 22px;
             background:
-                linear-gradient(135deg, rgba(37, 99, 235, 0.42), rgba(14, 165, 233, 0.14)),
+                linear-gradient(135deg, rgba(37, 99, 235, 0.35), rgba(14, 165, 233, 0.10)),
                 rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(96, 165, 250, 0.36);
-            margin-bottom: 24px;
-            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
-        }
-
-        .red-header {
-            background:
-                linear-gradient(135deg, rgba(220, 38, 38, 0.50), rgba(127, 29, 29, 0.32)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(248, 113, 113, 0.58);
-        }
-
-        .blue-header {
-            background:
-                linear-gradient(135deg, rgba(37, 99, 235, 0.50), rgba(30, 64, 175, 0.32)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(96, 165, 250, 0.58);
-        }
-
-        .purple-header {
-            background:
-                linear-gradient(135deg, rgba(147, 51, 234, 0.50), rgba(88, 28, 135, 0.34)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(192, 132, 252, 0.58);
-        }
-
-        .green-header {
-            background:
-                linear-gradient(135deg, rgba(22, 163, 74, 0.42), rgba(20, 83, 45, 0.32)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(74, 222, 128, 0.50);
+            border: 1px solid rgba(96, 165, 250, 0.30);
+            margin-bottom: 22px;
+            box-shadow: 0 16px 42px rgba(0, 0, 0, 0.30);
         }
 
         .main-header h1 {
             margin-bottom: 8px;
-            font-size: 38px;
+            font-size: 36px;
             font-weight: 850;
-            color: #f8fafc !important;
         }
 
         .main-header p {
             color: #cbd5e1;
             font-size: 16px;
             margin: 0;
-            max-width: 900px;
+            max-width: 980px;
         }
 
-        .metric-card {
-            padding: 22px;
-            border-radius: 20px;
-            background: rgba(15, 23, 42, 0.94);
-            border: 1px solid rgba(51, 65, 85, 0.92);
-            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.30);
-            min-height: 135px;
+        .red-header {
+            background:
+                linear-gradient(135deg, rgba(220, 38, 38, 0.46), rgba(127, 29, 29, 0.28)),
+                rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(248, 113, 113, 0.52);
+        }
+
+        .blue-header {
+            background:
+                linear-gradient(135deg, rgba(37, 99, 235, 0.46), rgba(30, 64, 175, 0.28)),
+                rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(96, 165, 250, 0.52);
+        }
+
+        .purple-header {
+            background:
+                linear-gradient(135deg, rgba(147, 51, 234, 0.46), rgba(88, 28, 135, 0.30)),
+                rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(192, 132, 252, 0.52);
+        }
+
+        .system-card,
+        .metric-card,
+        .attack-card,
+        .info-box,
+        .log-box {
+            padding: 18px;
+            border-radius: 18px;
+            background: rgba(15, 23, 42, 0.90);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.23);
+            margin-bottom: 16px;
+            transition: transform 0.18s ease, border 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .system-card:hover,
+        .metric-card:hover,
+        .attack-card:hover,
+        .info-box:hover {
+            transform: translateY(-3px);
+            border: 1px solid rgba(96, 165, 250, 0.48);
+            box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
         }
 
         .metric-label {
             color: #94a3b8;
-            font-size: 13px;
-            margin-bottom: 10px;
+            font-size: 12px;
+            margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
 
         .metric-value {
             color: #f8fafc;
-            font-size: 34px;
+            font-size: 30px;
             font-weight: 850;
             line-height: 1.15;
             word-break: break-word;
@@ -202,8 +348,8 @@ def apply_custom_styles():
 
         .metric-sub {
             color: #64748b;
-            font-size: 13px;
-            margin-top: 10px;
+            font-size: 12px;
+            margin-top: 8px;
         }
 
         .normal {
@@ -218,17 +364,29 @@ def apply_custom_styles():
             border-left: 5px solid #ef4444;
         }
 
+        .pump {
+            border-left: 5px solid #38bdf8;
+        }
+
+        .conveyor {
+            border-left: 5px solid #f97316;
+        }
+
+        .cooling {
+            border-left: 5px solid #a78bfa;
+        }
+
         .status-card {
-            padding: 22px;
-            border-radius: 20px;
+            padding: 20px;
+            border-radius: 18px;
             background: rgba(15, 23, 42, 0.94);
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
             margin-bottom: 18px;
         }
 
         .status-title {
-            font-size: 13px;
+            font-size: 12px;
             color: #94a3b8;
             margin-bottom: 8px;
             text-transform: uppercase;
@@ -236,52 +394,25 @@ def apply_custom_styles():
         }
 
         .status-value {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 850;
             color: #f8fafc;
         }
 
-        .info-box,
-        .red-box,
-        .blue-box,
-        .edu-box,
-        .log-box {
-            padding: 20px;
-            border-radius: 20px;
-            margin-bottom: 18px;
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20);
-            line-height: 1.65;
-        }
-
-        .info-box {
-            background: rgba(30, 41, 59, 0.72);
-            border: 1px solid rgba(148, 163, 184, 0.18);
-        }
-
-        .red-box {
-            background: rgba(127, 29, 29, 0.30);
-            border: 1px solid rgba(248, 113, 113, 0.38);
-        }
-
-        .blue-box {
-            background: rgba(30, 64, 175, 0.28);
-            border: 1px solid rgba(96, 165, 250, 0.38);
-        }
-
-        .edu-box {
-            background: rgba(88, 28, 135, 0.28);
-            border: 1px solid rgba(192, 132, 252, 0.38);
-        }
-
-        .log-box {
-            background: rgba(15, 23, 42, 0.88);
-            border: 1px solid rgba(148, 163, 184, 0.18);
+        .attack-level {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            margin-bottom: 10px;
         }
 
         div.stButton > button {
             width: 100%;
-            border-radius: 14px;
-            min-height: 48px;
+            border-radius: 12px;
+            min-height: 46px;
             font-weight: 750;
             border: 1px solid rgba(148, 163, 184, 0.25);
             background: rgba(30, 41, 59, 0.92);
@@ -291,20 +422,20 @@ def apply_custom_styles():
 
         div.stButton > button:hover {
             border: 1px solid rgba(96, 165, 250, 0.85);
-            background: rgba(37, 99, 235, 0.34);
+            background: rgba(37, 99, 235, 0.32);
             color: #ffffff;
             transform: translateY(-1px);
         }
 
         div.stDownloadButton > button {
             width: 100%;
-            border-radius: 14px;
-            min-height: 48px;
+            border-radius: 12px;
+            min-height: 46px;
             font-weight: 750;
         }
 
         div[data-testid="stDataFrame"] {
-            border-radius: 16px;
+            border-radius: 14px;
             overflow: hidden;
             border: 1px solid rgba(148, 163, 184, 0.18);
         }
@@ -330,13 +461,12 @@ def apply_custom_styles():
             }
 
             .main-header {
-                padding: 20px 18px;
-                border-radius: 18px;
-                margin-bottom: 18px;
+                padding: 18px 16px;
+                border-radius: 16px;
             }
 
             .main-header h1 {
-                font-size: 26px;
+                font-size: 24px;
                 line-height: 1.18;
             }
 
@@ -345,51 +475,26 @@ def apply_custom_styles():
                 line-height: 1.5;
             }
 
-            .metric-card {
-                padding: 18px;
-                min-height: auto;
-                border-radius: 16px;
-                margin-bottom: 10px;
+            .metric-card,
+            .system-card,
+            .attack-card,
+            .info-box,
+            .log-box {
+                padding: 15px;
+                border-radius: 15px;
             }
 
             .metric-value {
-                font-size: 28px;
-            }
-
-            .status-card {
-                padding: 18px;
-                border-radius: 16px;
+                font-size: 25px;
             }
 
             .status-value {
-                font-size: 26px;
-            }
-
-            .info-box,
-            .red-box,
-            .blue-box,
-            .edu-box,
-            .log-box {
-                padding: 16px;
-                border-radius: 16px;
-                font-size: 14px;
+                font-size: 23px;
             }
 
             div.stButton > button {
                 min-height: 50px;
                 font-size: 15px;
-            }
-
-            h1 {
-                font-size: 26px !important;
-            }
-
-            h2 {
-                font-size: 22px !important;
-            }
-
-            h3 {
-                font-size: 18px !important;
             }
         }
         </style>
@@ -399,20 +504,18 @@ def apply_custom_styles():
 
 
 def render_header(title, subtitle, variant="default"):
-    header_class = "main-header"
+    css_class = "main-header"
 
     if variant == "red":
-        header_class += " red-header"
+        css_class += " red-header"
     elif variant == "blue":
-        header_class += " blue-header"
+        css_class += " blue-header"
     elif variant == "purple":
-        header_class += " purple-header"
-    elif variant == "green":
-        header_class += " green-header"
+        css_class += " purple-header"
 
     st.markdown(
         f"""
-        <div class="{header_class}">
+        <div class="{css_class}">
             <h1>{title}</h1>
             <p>{subtitle}</p>
         </div>
@@ -446,21 +549,40 @@ def render_status_card(title, value, icon="⌁", status="normal"):
     )
 
 
+def render_system_intro(system_name, system_config):
+    st.markdown(
+        f"""
+        <div class="system-card {system_config['variant']}">
+            <h3>{system_config['icon']} {system_name}</h3>
+            <p>{system_config['description']}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_attack_card(attack):
+    writes_text = "<br>".join(
+        [f"R{REGISTER_MAP[tag]}: <b>{tag}</b> → <b>{value}</b>" for tag, value in attack["writes"]]
+    )
+
+    duration_text = "Single write" if attack["duration"] == 0 else f"{attack['duration']} seconds"
+
+    st.markdown(
+        f"""
+        <div class="attack-card danger">
+            <span class="attack-level">{attack['level']}</span>
+            <h3>{attack['name']}</h3>
+            <p>{attack['description']}</p>
+            <p>{writes_text}</p>
+            <p><b>Mode:</b> {duration_text}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
 apply_custom_styles()
-
-
-# ------------------------------------------------
-# SCENARIOS
-# ------------------------------------------------
-
-def load_training_scenario(path="scenarios/beginner.json"):
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return None
-    except json.JSONDecodeError:
-        return None
 
 
 # ------------------------------------------------
@@ -470,12 +592,9 @@ def load_training_scenario(path="scenarios/beginner.json"):
 def get_client():
     for host in PLC_HOSTS:
         client = ModbusTcpClient(host, port=PLC_PORT)
-
         if client.connect():
             return client, host
-
         client.close()
-
     return None, None
 
 
@@ -485,7 +604,7 @@ def read_plc_state():
     if client is None:
         return None, None, "Cannot connect to PLC"
 
-    result = client.read_holding_registers(0, 8, unit=1)
+    result = client.read_holding_registers(0, 12, unit=1)
 
     if result.isError():
         client.close()
@@ -498,32 +617,67 @@ def read_plc_state():
         "pressure": registers[1],
         "water_level": registers[2],
         "pump_status": registers[3],
+
         "conveyor_status": registers[4],
         "motor_speed": registers[5],
-        "item_count": registers[6],
+        "motor_current": registers[6],
         "emergency_stop": registers[7],
+
+        "fan_status": registers[8],
+        "coolant_temperature": registers[9],
+        "valve_position": registers[10],
+        "cooling_alarm": registers[11],
     }
 
     client.close()
-
     return state, host, None
 
 
-def write_register(address, value):
+def write_register(tag, value):
     client, host = get_client()
 
     if client is None:
         return False, "Cannot connect to PLC"
 
+    address = REGISTER_MAP[tag]
     result = client.write_register(address, value, unit=1)
-
     client.close()
 
     if result.isError():
         return False, f"Cannot write register {address}"
 
-    return True, f"Register {address} set to {value}"
+    return True, f"{tag} set to {value}"
 
+
+def run_repeated_write(writes, duration=10):
+    progress = st.progress(0)
+    status_box = st.empty()
+
+    start_time = time.time()
+
+    while time.time() - start_time < duration:
+        for tag, value in writes:
+            write_register(tag, value)
+
+        current_state, _, error = read_plc_state()
+
+        if error:
+            status_box.error(error)
+            break
+
+        status_box.warning("Attack in progress...")
+
+        elapsed = time.time() - start_time
+        progress.progress(min(int((elapsed / duration) * 100), 100))
+
+        time.sleep(1)
+
+    progress.progress(100)
+
+
+# ------------------------------------------------
+# BLUE TEAM LOGIC
+# ------------------------------------------------
 
 def detect_anomalies(state):
     alerts = []
@@ -532,9 +686,12 @@ def detect_anomalies(state):
         min_value, max_value = NORMAL_RANGES[tag]
 
         if value < min_value or value > max_value:
-            alerts.append(
-                f"{tag} = {value}, норма: {min_value} - {max_value}"
-            )
+            alerts.append({
+                "tag": tag,
+                "value": value,
+                "normal_range": f"{min_value} - {max_value}",
+                "message": f"{tag} = {value}, норма: {min_value} - {max_value}",
+            })
 
     return alerts
 
@@ -545,11 +702,11 @@ def get_system_status(state):
 
     alerts = detect_anomalies(state)
 
-    if state["emergency_stop"] == 1:
-        return "EMERGENCY STOP", "⛔", "danger"
+    if state["emergency_stop"] == 1 or state["cooling_alarm"] == 1:
+        return "CRITICAL", "⛔", "danger"
 
-    if state["pump_status"] == 0 or state["conveyor_status"] == 0:
-        return "UNDER ATTACK", "⛔", "danger"
+    if state["pump_status"] == 0 or state["conveyor_status"] == 0 or state["fan_status"] == 0:
+        return "UNDER ATTACK", "◇", "danger"
 
     if alerts:
         return "WARNING", "◇", "warning"
@@ -557,98 +714,106 @@ def get_system_status(state):
     return "NORMAL", "⌁", "normal"
 
 
-def recover_system():
-    operations = [
-        (0, NORMAL_STATE["temperature"]),
-        (1, NORMAL_STATE["pressure"]),
-        (2, NORMAL_STATE["water_level"]),
-        (3, NORMAL_STATE["pump_status"]),
-        (4, NORMAL_STATE["conveyor_status"]),
-        (5, NORMAL_STATE["motor_speed"]),
-        (7, NORMAL_STATE["emergency_stop"]),
+def recover_pump_station():
+    for tag in ["temperature", "pressure", "water_level", "pump_status"]:
+        ok, message = write_register(tag, NORMAL_STATE[tag])
+        if not ok:
+            return False, message
+    return True, "Pump Station recovered"
+
+
+def recover_conveyor_line():
+    for tag in ["conveyor_status", "motor_speed", "motor_current", "emergency_stop"]:
+        ok, message = write_register(tag, NORMAL_STATE[tag])
+        if not ok:
+            return False, message
+    return True, "Conveyor Line recovered"
+
+
+def recover_cooling_system():
+    for tag in ["fan_status", "coolant_temperature", "valve_position", "cooling_alarm"]:
+        ok, message = write_register(tag, NORMAL_STATE[tag])
+        if not ok:
+            return False, message
+    return True, "Cooling System recovered"
+
+
+def recover_full_system():
+    recovery_functions = [
+        recover_pump_station,
+        recover_conveyor_line,
+        recover_cooling_system,
     ]
 
-    errors = []
-
-    for address, value in operations:
-        ok, message = write_register(address, value)
-
+    for recovery_function in recovery_functions:
+        ok, message = recovery_function()
         if not ok:
-            errors.append(message)
+            return False, message
 
-    return errors
-
-
-def reset_item_counter():
-    return write_register(6, 0)
+    return True, "Full system recovered"
 
 
-def run_false_data_injection(duration=10):
-    progress = st.progress(0)
-    status_box = st.empty()
-
-    start_time = time.time()
-
-    while time.time() - start_time < duration:
-        write_register(0, 999)
-        write_register(1, 0)
-
-        state, _, error = read_plc_state()
-
-        if error:
-            status_box.error(error)
-            break
-
-        status_box.warning(
-            f"Injected data: Temperature={state['temperature']}, Pressure={state['pressure']}"
-        )
-
-        elapsed = time.time() - start_time
-        progress.progress(min(int((elapsed / duration) * 100), 100))
-
-        time.sleep(1)
-
-    progress.progress(100)
-
-    final_state, _, _ = read_plc_state()
-
-    log_event(
-        event_type="FALSE_DATA_INJECTION",
-        description=f"False Data Injection виконано протягом {duration} секунд",
-        state=final_state
-    )
+def recover_by_system(system_name):
+    if system_name == "Pump Station":
+        return recover_pump_station()
+    if system_name == "Conveyor Line":
+        return recover_conveyor_line()
+    if system_name == "Cooling System":
+        return recover_cooling_system()
+    return recover_full_system()
 
 
 # ------------------------------------------------
-# SIDEBAR + MOBILE NAVIGATION
+# PDF REPORT
+# ------------------------------------------------
+
+def generate_pdf_report_safe():
+    try:
+        from reports.pdf_report import generate_pdf_report
+        generate_pdf_report()
+        return True, "reports/simulation_report.pdf"
+    except Exception as error:
+        return False, str(error)
+
+
+# ------------------------------------------------
+# TRAINING SCENARIO
+# ------------------------------------------------
+
+def load_training_scenario(path="scenarios/beginner.json"):
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception:
+        return None
+
+
+# ------------------------------------------------
+# SIDEBAR
 # ------------------------------------------------
 
 st.sidebar.title("ICSCyberRange")
 st.sidebar.caption("ICS/SCADA Cyber Range Platform")
 
 pages = [
-    "Dashboard",
+    "Overview",
+    "Systems",
     "Red Team",
     "Blue Team",
-    "Educational Mode",
-    "Event Logs",
+    "Training",
+    "How It Works",
 ]
 
 sidebar_page = st.sidebar.radio("Navigation", pages)
 
-st.markdown(
-    '<div class="mobile-nav-label">Mobile navigation</div>',
-    unsafe_allow_html=True
-)
+st.markdown('<div class="mobile-nav-label">Mobile navigation</div>', unsafe_allow_html=True)
 
-mobile_page = st.selectbox(
+page = st.selectbox(
     "Select page",
     pages,
     index=pages.index(sidebar_page),
     label_visibility="collapsed"
 )
-
-page = mobile_page
 
 st.sidebar.divider()
 
@@ -679,13 +844,13 @@ st.sidebar.caption("Diploma project: ICSCyberRange")
 
 
 # ------------------------------------------------
-# PAGE: DASHBOARD
+# PAGE: OVERVIEW
 # ------------------------------------------------
 
-if page == "Dashboard":
+if page == "Overview":
     render_header(
-        "⌁ ICSCyberRange Dashboard",
-        "Моніторинг Pump Station та Conveyor Line у віртуальному ICS/SCADA середовищі."
+        "⌁ ICSCyberRange Control Center",
+        "Симуляція атак і захисту трьох промислових ICS/SCADA підсистем."
     )
 
     if error:
@@ -695,119 +860,56 @@ if page == "Dashboard":
         status, icon, status_class = get_system_status(state)
 
         render_status_card(
-            title="System Security Status",
+            title="Global Security Status",
             value=status,
             icon=icon,
             status=status_class
         )
 
-        st.divider()
+        s1, s2, s3 = st.columns(3)
 
-        st.subheader("Pump Station")
+        with s1:
+            render_system_intro("Pump Station", SYSTEMS["Pump Station"])
 
-        p1, p2 = st.columns(2)
-        p3, p4 = st.columns(2)
+        with s2:
+            render_system_intro("Conveyor Line", SYSTEMS["Conveyor Line"])
 
-        with p1:
-            render_metric_card(
-                "Temperature",
-                state["temperature"],
-                "°C",
-                "PLC register 0",
-                "warning" if state["temperature"] > 45 else "normal"
-            )
+        with s3:
+            render_system_intro("Cooling System", SYSTEMS["Cooling System"])
 
-        with p2:
-            render_metric_card(
-                "Pressure",
-                state["pressure"],
-                "bar",
-                "PLC register 1",
-                "warning" if state["pressure"] > 10 or state["pressure"] < 2 else "normal"
-            )
-
-        with p3:
-            render_metric_card(
-                "Water Level",
-                state["water_level"],
-                "%",
-                "PLC register 2",
-                "warning" if state["water_level"] < 20 else "normal"
-            )
-
-        with p4:
-            render_metric_card(
-                "Pump Status",
-                "ON" if state["pump_status"] == 1 else "OFF",
-                "",
-                "PLC register 3",
-                "normal" if state["pump_status"] == 1 else "danger"
-            )
+        st.markdown(
+            """
+            <div class="info-box">
+            <b>Як працювати з платформою:</b><br>
+            1. Перевір стан систем у вкладці <b>Systems</b>.<br>
+            2. Запусти атаку у вкладці <b>Red Team</b>.<br>
+            3. Перейди в <b>Blue Team</b>, знайди аномалію і виконай recovery.<br>
+            4. Після симуляції створи PDF-звіт у <b>Blue Team</b>.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         st.divider()
 
-        st.subheader("Conveyor Line")
+        alerts = detect_anomalies(state)
 
-        c1, c2 = st.columns(2)
-        c3, c4 = st.columns(2)
+        st.subheader("Fast Health Check")
 
-        with c1:
-            render_metric_card(
-                "Conveyor Status",
-                "ON" if state["conveyor_status"] == 1 else "OFF",
-                "",
-                "PLC register 4",
-                "normal" if state["conveyor_status"] == 1 else "danger"
-            )
-
-        with c2:
-            render_metric_card(
-                "Motor Speed",
-                state["motor_speed"],
-                "%",
-                "PLC register 5",
-                "warning" if state["motor_speed"] > 100 or state["motor_speed"] < 40 else "normal"
-            )
-
-        with c3:
-            render_metric_card(
-                "Item Count",
-                state["item_count"],
-                "",
-                "PLC register 6",
-                "normal"
-            )
-
-        with c4:
-            render_metric_card(
-                "Emergency Stop",
-                "ACTIVE" if state["emergency_stop"] == 1 else "OFF",
-                "",
-                "PLC register 7",
-                "danger" if state["emergency_stop"] == 1 else "normal"
-            )
+        if alerts:
+            st.warning(f"Detected anomalies: {len(alerts)}")
+            for alert in alerts:
+                st.write(f"- {alert['message']}")
+        else:
+            st.success("All systems are operating normally.")
 
         st.divider()
 
-        left, right = st.columns([1.2, 1])
+        col1, col2 = st.columns(2)
 
-        with left:
-            st.subheader("Current Anomaly Check")
-            alerts = detect_anomalies(state)
-
-            if alerts:
-                st.warning("Detected anomalies:")
-                for alert in alerts:
-                    st.write(f"- {alert}")
-            else:
-                st.success("No anomalies detected.")
-
-        with right:
-            st.subheader("Quick Actions")
-
+        with col1:
             if st.button("Refresh PLC Status"):
                 current_state, _, current_error = read_plc_state()
-
                 if current_error:
                     st.error(current_error)
                 else:
@@ -816,25 +918,67 @@ if page == "Dashboard":
                         description="Користувач оновив стан PLC",
                         state=current_state
                     )
+                    st.rerun()
 
-                st.rerun()
+        with col2:
+            if st.button("Open Grafana Info"):
+                st.info("Grafana dashboard: http://localhost:3000")
 
-            if st.button("Show Grafana Link"):
-                st.info("Grafana dashboard доступний за адресою: http://localhost:3000")
 
-    st.divider()
+# ------------------------------------------------
+# PAGE: SYSTEMS
+# ------------------------------------------------
 
-    st.subheader("Architecture Overview")
-
-    st.markdown(
-        """
-        <div class="info-box">
-        <b>Поточний ланцюг роботи системи:</b><br><br>
-        Streamlit UI → Red/Blue Team Modules → Modbus TCP → PLC Simulator → Telemetry Collector → InfluxDB → Grafana
-        </div>
-        """,
-        unsafe_allow_html=True
+elif page == "Systems":
+    render_header(
+        "⬡ Industrial Systems Dashboard",
+        "Поточний стан Pump Station, Conveyor Line та Cooling System."
     )
+
+    if error:
+        st.error(error)
+    else:
+        for system_name, config in SYSTEMS.items():
+            render_system_intro(system_name, config)
+
+            cols = st.columns(4)
+
+            for index, tag in enumerate(config["tags"]):
+                min_value, max_value = NORMAL_RANGES[tag]
+                value = state[tag]
+
+                status_class = "normal"
+                if value < min_value or value > max_value:
+                    status_class = "danger"
+
+                label = tag.replace("_", " ").title()
+
+                unit = ""
+                if "temperature" in tag:
+                    unit = "°C"
+                elif tag == "pressure":
+                    unit = "bar"
+                elif "level" in tag or "speed" in tag or "position" in tag:
+                    unit = "%"
+                elif tag == "motor_current":
+                    unit = "A"
+
+                with cols[index]:
+                    display_value = value
+
+                    if tag in ["pump_status", "conveyor_status", "fan_status"]:
+                        display_value = "ON" if value == 1 else "OFF"
+
+                    if tag in ["emergency_stop", "cooling_alarm"]:
+                        display_value = "ACTIVE" if value == 1 else "OFF"
+
+                    render_metric_card(
+                        label=label,
+                        value=display_value,
+                        unit=unit,
+                        subtext=f"Register {REGISTER_MAP[tag]} | Normal: {min_value}-{max_value}",
+                        status=status_class
+                    )
 
 
 # ------------------------------------------------
@@ -843,148 +987,44 @@ if page == "Dashboard":
 
 elif page == "Red Team":
     render_header(
-        "⛔ Red Team — Attack Simulation",
-        "Запуск контрольованих атак на Pump Station та Conveyor Line через Modbus TCP.",
+        "⛔ Red Team",
+        "Запуск контрольованих атак. Виявлення та відновлення виконується тільки через Blue Team.",
         variant="red"
     )
 
-    st.subheader("Pump Station Attacks")
+    st.warning(
+        "Red Team тільки запускає атаки. Для аналізу і відновлення перейдіть у вкладку Blue Team."
+    )
 
-    col_attack1, col_attack2 = st.columns(2)
+    selected_system = st.selectbox(
+        "Select target system",
+        list(SYSTEMS.keys())
+    )
 
-    with col_attack1:
-        st.markdown(
-            """
-            <div class="red-box">
-                <b>Modbus Command Injection</b><br>
-                Register: 3<br>
-                Value: 0<br>
-                Effect: Pump OFF
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    system_attacks = [attack for attack in ATTACKS if attack["system"] == selected_system]
 
-        if st.button("Run Pump OFF Attack"):
-            ok, message = write_register(3, 0)
-            current_state, _, _ = read_plc_state()
+    cols = st.columns(3)
 
-            if ok:
+    for index, attack in enumerate(system_attacks):
+        with cols[index]:
+            render_attack_card(attack)
+
+            if st.button(f"Run: {attack['name']}"):
+                if attack["duration"] > 0:
+                    run_repeated_write(attack["writes"], duration=attack["duration"])
+                else:
+                    for tag, value in attack["writes"]:
+                        write_register(tag, value)
+
+                current_state, _, _ = read_plc_state()
+
                 log_event(
-                    event_type="MODBUS_COMMAND_INJECTION",
-                    description="Атака виконана: насос примусово вимкнено",
+                    event_type=attack["event"],
+                    description=f"Запущено атаку: {attack['name']}",
                     state=current_state
                 )
-                st.error("Attack executed: Pump forced OFF")
-            else:
-                st.error(message)
 
-    with col_attack2:
-        st.markdown(
-            """
-            <div class="red-box">
-                <b>False Data Injection</b><br>
-                Register 0: temperature = 999<br>
-                Register 1: pressure = 0<br>
-                Effect: fake sensor values
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        duration = st.slider("Attack duration, seconds", 3, 20, 10)
-
-        if st.button("Run False Data Injection"):
-            st.warning("False Data Injection started...")
-            run_false_data_injection(duration=duration)
-            st.warning("False Data Injection finished")
-
-    st.divider()
-
-    st.subheader("Conveyor Line Attacks")
-
-    conv1, conv2, conv3 = st.columns(3)
-
-    with conv1:
-        st.markdown(
-            """
-            <div class="red-box">
-                <b>Conveyor Stop Attack</b><br>
-                Register: 4<br>
-                Value: 0<br>
-                Effect: Conveyor OFF
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if st.button("Run Conveyor Stop Attack"):
-            ok, message = write_register(4, 0)
-            current_state, _, _ = read_plc_state()
-
-            if ok:
-                log_event(
-                    event_type="CONVEYOR_STOP_ATTACK",
-                    description="Атака виконана: конвеєр примусово зупинено",
-                    state=current_state
-                )
-                st.error("Attack executed: Conveyor forced OFF")
-            else:
-                st.error(message)
-
-    with conv2:
-        st.markdown(
-            """
-            <div class="red-box">
-                <b>Motor Speed Manipulation</b><br>
-                Register: 5<br>
-                Value: 120<br>
-                Effect: unsafe motor speed
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if st.button("Run Motor Speed Manipulation"):
-            ok, message = write_register(5, 120)
-            current_state, _, _ = read_plc_state()
-
-            if ok:
-                log_event(
-                    event_type="MOTOR_SPEED_MANIPULATION",
-                    description="Атака виконана: швидкість двигуна змінено на небезпечну",
-                    state=current_state
-                )
-                st.error("Attack executed: Motor speed set to 120%")
-            else:
-                st.error(message)
-
-    with conv3:
-        st.markdown(
-            """
-            <div class="red-box">
-                <b>Emergency Stop Abuse</b><br>
-                Register: 7<br>
-                Value: 1<br>
-                Effect: emergency stop active
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if st.button("Run Emergency Stop Abuse"):
-            ok, message = write_register(7, 1)
-            current_state, _, _ = read_plc_state()
-
-            if ok:
-                log_event(
-                    event_type="EMERGENCY_STOP_ATTACK",
-                    description="Атака виконана: активовано аварійну зупинку",
-                    state=current_state
-                )
-                st.error("Attack executed: Emergency Stop activated")
-            else:
-                st.error(message)
+                st.error(f"Attack executed: {attack['name']}")
 
 
 # ------------------------------------------------
@@ -993,269 +1033,245 @@ elif page == "Red Team":
 
 elif page == "Blue Team":
     render_header(
-        "⬢ Blue Team — Detection and Recovery",
-        "Виявлення аномалій та відновлення Pump Station і Conveyor Line.",
+        "⬢ Blue Team",
+        "Виявлення аномалій, відновлення системи та формування PDF-звіту після інциденту.",
         variant="blue"
     )
 
-    col_def1, col_def2 = st.columns(2)
-
-    with col_def1:
-        st.subheader("Anomaly Detection")
-
-        st.markdown(
-            """
-            <div class="blue-box">
-                <b>Перевіряє:</b><br>
-                Pump Station: temperature, pressure, water level, pump status<br>
-                Conveyor Line: status, motor speed, item count, emergency stop
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if st.button("Run Anomaly Detection"):
-            current_state, _, current_error = read_plc_state()
-
-            if current_error:
-                st.error(current_error)
-            else:
-                alerts = detect_anomalies(current_state)
-
-                if alerts:
-                    log_event(
-                        event_type="ANOMALY_DETECTION",
-                        description="Виявлено аномалії: " + "; ".join(alerts),
-                        state=current_state
-                    )
-
-                    st.error("Anomalies detected:")
-                    for alert in alerts:
-                        st.write(f"- {alert}")
-                else:
-                    log_event(
-                        event_type="ANOMALY_DETECTION",
-                        description="Аномалій не виявлено",
-                        state=current_state
-                    )
-
-                    st.success("System status: normal")
-
-    with col_def2:
-        st.subheader("Recovery")
-
-        st.markdown(
-            """
-            <div class="blue-box">
-                <b>Recovery:</b><br>
-                Pump Station → normal operating values<br>
-                Conveyor Line → ON, speed 70%, emergency stop OFF
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if st.button("Recover Full System"):
-            errors = recover_system()
-            current_state, _, _ = read_plc_state()
-
-            if errors:
-                st.error("Recovery failed:")
-                for err in errors:
-                    st.write(f"- {err}")
-            else:
-                log_event(
-                    event_type="FULL_SYSTEM_RECOVERY",
-                    description="Відновлено Pump Station та Conveyor Line",
-                    state=current_state
-                )
-                st.success("Full system recovered")
-
-        if st.button("Reset Item Counter"):
-            ok, message = reset_item_counter()
-            current_state, _, _ = read_plc_state()
-
-            if ok:
-                log_event(
-                    event_type="ITEM_COUNTER_RESET",
-                    description="Лічильник деталей скинуто",
-                    state=current_state
-                )
-                st.success("Item counter reset")
-            else:
-                st.error(message)
-
-    st.divider()
-
-    st.subheader("Normal Operating Ranges")
-
-    df_ranges = pd.DataFrame(
-        [
-            {
-                "Parameter": key,
-                "Min": value[0],
-                "Max": value[1],
-            }
-            for key, value in NORMAL_RANGES.items()
-        ]
-    )
-
-    st.dataframe(df_ranges, use_container_width=True)
-
-
-# ------------------------------------------------
-# PAGE: EDUCATIONAL MODE
-# ------------------------------------------------
-
-elif page == "Educational Mode":
-    render_header(
-        "✦ Educational Mode",
-        "Навчальний режим для покрокового вивчення атак і захисту ICS/SCADA систем.",
-        variant="purple"
-    )
-
-    scenario = load_training_scenario()
-
-    if scenario is None:
-        st.error("Не вдалося завантажити сценарій scenarios/beginner.json")
+    if error:
+        st.error(error)
     else:
-        st.subheader(scenario["title"])
+        col1, col2 = st.columns(2)
 
-        st.markdown(
-            """
-            <div class="edu-box">
-                Цей сценарій допомагає студенту зрозуміти, як атака через Modbus TCP впливає
-                на промисловий процес і які дії повинен виконати оператор після інциденту.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        with col1:
+            st.subheader("Anomaly Detection")
 
-        st.write(f"**Рівень:** {scenario['level']}")
-        st.write(f"**Опис:** {scenario['description']}")
-        st.write(f"**Мета:** {scenario['goal']}")
+            st.markdown(
+                """
+                <div class="info-box">
+                Blue Team перевіряє всі параметри PLC і показує, що вийшло за нормальні межі.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-        st.divider()
+            if st.button("Run Full Anomaly Detection"):
+                current_state, _, current_error = read_plc_state()
 
-        st.markdown("### Практична частина")
-
-        col_edu1, col_edu2, col_edu3 = st.columns(3)
-
-        with col_edu1:
-            if st.button("Educational: Check PLC State"):
-                edu_state, _, edu_error = read_plc_state()
-
-                if edu_error:
-                    st.error(edu_error)
+                if current_error:
+                    st.error(current_error)
                 else:
-                    log_event(
-                        event_type="EDUCATIONAL_STATUS_READ",
-                        description="У навчальному режимі перевірено стан PLC",
-                        state=edu_state
-                    )
+                    alerts = detect_anomalies(current_state)
 
-                    st.success("Поточний стан PLC:")
-                    st.write(edu_state)
+                    if alerts:
+                        log_event(
+                            event_type="ANOMALY_DETECTION",
+                            description="Виявлено аномалії: " + "; ".join([a["message"] for a in alerts]),
+                            state=current_state
+                        )
 
-        with col_edu2:
-            if st.button("Educational: Run Pump Attack"):
-                ok, message = write_register(3, 0)
+                        st.error("Anomalies detected:")
+                        for alert in alerts:
+                            st.write(f"- {alert['message']}")
+                    else:
+                        log_event(
+                            event_type="ANOMALY_DETECTION",
+                            description="Аномалій не виявлено",
+                            state=current_state
+                        )
+
+                        st.success("System status: normal")
+
+        with col2:
+            st.subheader("Recovery")
+
+            st.markdown(
+                """
+                <div class="info-box">
+                Recovery повертає параметри вибраної системи до безпечного нормального стану.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            recovery_target = st.selectbox(
+                "Select recovery target",
+                ["Full System", "Pump Station", "Conveyor Line", "Cooling System"]
+            )
+
+            if st.button("Run Recovery"):
+                ok, message = recover_by_system(recovery_target)
                 current_state, _, _ = read_plc_state()
 
                 if ok:
                     log_event(
-                        event_type="EDUCATIONAL_ATTACK",
-                        description="Навчальна атака виконана: насос примусово вимкнено",
+                        event_type="RECOVERY_EXECUTED",
+                        description=f"Виконано recovery: {recovery_target}",
                         state=current_state
                     )
-                    st.error("Навчальна атака виконана: насос вимкнено")
+                    st.success(message)
                 else:
                     st.error(message)
 
-        with col_edu3:
-            if st.button("Educational: Recover"):
-                errors = recover_system()
-                current_state, _, _ = read_plc_state()
+        st.divider()
 
-                if errors:
-                    st.error("Recovery failed")
-                    for err in errors:
-                        st.write(f"- {err}")
+        st.subheader("Incident Report")
+
+        report_col1, report_col2 = st.columns(2)
+
+        with report_col1:
+            if st.button("Generate PDF Incident Report"):
+                ok, result = generate_pdf_report_safe()
+
+                if ok:
+                    st.session_state["last_pdf_report"] = result
+                    st.success("PDF-звіт успішно створено.")
                 else:
-                    log_event(
-                        event_type="EDUCATIONAL_RECOVERY",
-                        description="У навчальному режимі виконано відновлення системи",
-                        state=current_state
+                    st.error(result)
+
+        with report_col2:
+            try:
+                pdf_path = Path(
+                    st.session_state.get(
+                        "last_pdf_report",
+                        "reports/simulation_report.pdf"
                     )
-                    st.success("Система відновлена")
+                )
+
+                if pdf_path.exists():
+                    st.download_button(
+                        label="Download PDF Report",
+                        data=pdf_path.read_bytes(),
+                        file_name="simulation_report.pdf",
+                        mime="application/pdf"
+                    )
+                else:
+                    st.info("Спочатку створи PDF-звіт.")
+
+            except Exception as pdf_error:
+                st.warning("Не вдалося підготувати PDF до завантаження.")
+                st.code(str(pdf_error))
 
         st.divider()
 
-        st.markdown("### Контрольне питання")
+        st.subheader("Recent Security Events")
 
-        question = scenario["question"]
+        try:
+            logs = read_logs(limit=20)
 
-        selected_option = st.radio(
-            question["text"],
-            question["options"],
-            key="educational_question"
-        )
-
-        if st.button("Перевірити відповідь"):
-            selected_index = question["options"].index(selected_option)
-            current_state, _, _ = read_plc_state()
-
-            if selected_index == question["correct_answer"]:
-                log_event(
-                    event_type="EDUCATIONAL_ANSWER",
-                    description="Користувач дав правильну відповідь у навчальному сценарії",
-                    state=current_state
-                )
-                st.success("Правильно")
+            if logs:
+                df_logs = pd.DataFrame(logs)
+                st.dataframe(df_logs, width="stretch")
             else:
-                log_event(
-                    event_type="EDUCATIONAL_ANSWER",
-                    description="Користувач дав неправильну відповідь у навчальному сценарії",
-                    state=current_state
-                )
-                st.error("Неправильно")
+                st.info("Журнал подій поки порожній.")
 
-            st.info(question["explanation"])
+        except Exception as log_error:
+            st.warning("Не вдалося завантажити журнал подій.")
+            st.code(str(log_error))
+
+        st.divider()
+
+        st.subheader("Normal Operating Ranges")
+
+        rows = []
+
+        for tag, value_range in NORMAL_RANGES.items():
+            rows.append({
+                "Parameter": tag,
+                "Register": REGISTER_MAP[tag],
+                "Normal Min": value_range[0],
+                "Normal Max": value_range[1],
+            })
+
+        st.dataframe(pd.DataFrame(rows), width="stretch")
 
 
 # ------------------------------------------------
-# PAGE: EVENT LOGS
+# PAGE: TRAINING
 # ------------------------------------------------
 
-elif page == "Event Logs":
+elif page == "Training":
     render_header(
-        "▣ Simulation Event Logs",
-        "Історія дій користувача, атак, виявлення аномалій та recovery-процедур.",
-        variant="green"
+        "✦ Training Mode",
+        "Коротке пояснення для користувача, який вперше працює з ICSCyberRange.",
+        variant="purple"
     )
 
-    logs = read_logs(limit=100)
+    st.markdown(
+        """
+        <div class="info-box">
+        <b>Що це за програма?</b><br><br>
+        Це навчальний кіберполігон. Він імітує маленький віртуальний завод із трьома системами:
+        насосною станцією, конвеєром і охолодженням.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    if logs:
-        df_logs = pd.DataFrame(logs)
+    st.subheader("Як користуватись")
 
-        st.markdown(
-            """
-            <div class="log-box">
-                Нижче відображено останні події симуляції.
-                Цей журнал можна використати для аналізу сценарію атаки та формування звіту.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    st.write(
+        """
+        1. Відкрий **Systems** і подивись, чи всі параметри в нормі.
+        2. Перейди в **Red Team** і запусти одну атаку.
+        3. Перейди в **Blue Team** і запусти перевірку аномалій.
+        4. Натисни **Recovery**, щоб система повернулась у нормальний стан.
+        5. Створи PDF-звіт після завершення симуляції.
+        """
+    )
 
-        st.dataframe(df_logs, use_container_width=True)
+    st.subheader("Що таке Modbus register?")
 
-        st.download_button(
-            label="Download logs as CSV",
-            data=df_logs.to_csv(index=False).encode("utf-8"),
-            file_name="simulation_log.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("Журнал подій поки порожній.")
+    st.info(
+        """
+        Modbus register — це комірка памʼяті PLC.
+        Наприклад, register 3 відповідає за насос.
+        Якщо записати туди 0 — насос вимкнеться.
+        """
+    )
+
+
+# ------------------------------------------------
+# PAGE: HOW IT WORKS
+# ------------------------------------------------
+
+elif page == "How It Works":
+    render_header(
+        "◇ How ICSCyberRange Works",
+        "Пояснення простими словами: що відбувається всередині системи."
+    )
+
+    st.markdown(
+        """
+        <div class="info-box">
+        <b>1. PLC Simulator</b><br>
+        Це віртуальний контролер. Він зберігає 12 значень у Modbus-регістрах.
+        </div>
+
+        <div class="info-box">
+        <b>2. Streamlit</b><br>
+        Це головний веб-інтерфейс. Тут користувач запускає атаки, перевіряє стан систем і виконує recovery.
+        </div>
+
+        <div class="info-box">
+        <b>3. Red Team</b><br>
+        Це модуль атак. Він змінює Modbus-регістри так, ніби систему атакує зловмисник.
+        </div>
+
+        <div class="info-box">
+        <b>4. Blue Team</b><br>
+        Це модуль захисту. Він перевіряє параметри, знаходить аномалії, відновлює систему і формує PDF-звіт.
+        </div>
+
+        <div class="info-box">
+        <b>5. InfluxDB</b><br>
+        Це база телеметрії. Collector записує туди значення PLC кожні 2 секунди.
+        </div>
+
+        <div class="info-box">
+        <b>6. Grafana</b><br>
+        Це система графіків. Вона показує, як змінюються параметри після атак і recovery.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )

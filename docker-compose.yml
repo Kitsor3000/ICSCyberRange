@@ -23,8 +23,10 @@ services:
     working_dir: /app
     volumes:
       - ./:/app
+    environment:
+      - PLC_HOST=host.docker.internal
     command: >
-      bash -c "pip install streamlit pymodbus==2.5.3 requests influxdb-client &&
+      bash -c "pip install streamlit pandas pymodbus==2.5.3 requests influxdb-client python-dotenv reportlab &&
                streamlit run streamlit_app/app.py --server.port=8501 --server.address=0.0.0.0"
     ports:
       - "8501:8501"
@@ -36,7 +38,10 @@ services:
     working_dir: /app
     volumes:
       - ./attacks:/app
-    command: tail -f /dev/null
+    command: >
+      bash -c "pip install pymodbus==2.5.3 &&
+               tail -f /dev/null"
+    restart: always
 
 volumes:
   influxdb_data:
