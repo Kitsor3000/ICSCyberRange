@@ -7,24 +7,12 @@ from pymodbus.client.sync import ModbusTcpClient
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 
 
-# ------------------------------------------------
-# LOAD ENV
-# ------------------------------------------------
-
 load_dotenv()
 
-
-# ------------------------------------------------
-# PLC SETTINGS
-# ------------------------------------------------
 
 PLC_HOST = "127.0.0.1"
 PLC_PORT = 5020
 
-
-# ------------------------------------------------
-# INFLUXDB SETTINGS
-# ------------------------------------------------
 
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
@@ -35,23 +23,9 @@ if not INFLUXDB_TOKEN:
     raise ValueError("INFLUXDB_TOKEN не знайдено. Перевір файл .env")
 
 
-# ------------------------------------------------
-# PLC READ
-# ------------------------------------------------
-
 def read_plc_state():
     """
-    Зчитування стану PLC через Modbus TCP.
-
-    Registers:
-    0 - temperature
-    1 - pressure
-    2 - water_level
-    3 - pump_status
-    4 - conveyor_status
-    5 - motor_speed
-    6 - item_count
-    7 - emergency_stop
+    Зчитування 12 Modbus-регістрів з PLC.
     """
 
     client = ModbusTcpClient(PLC_HOST, port=PLC_PORT)
@@ -59,7 +33,7 @@ def read_plc_state():
     if not client.connect():
         raise ConnectionError("Cannot connect to PLC")
 
-    result = client.read_holding_registers(0, 8, unit=1)
+    result = client.read_holding_registers(0, 12, unit=1)
 
     client.close()
 
@@ -69,36 +43,52 @@ def read_plc_state():
     registers = result.registers
 
     return {
+        # Pump Station
         "temperature": registers[0],
         "pressure": registers[1],
         "water_level": registers[2],
         "pump_status": registers[3],
+
+        # Conveyor Line
         "conveyor_status": registers[4],
         "motor_speed": registers[5],
-        "item_count": registers[6],
+        "motor_current": registers[6],
         "emergency_stop": registers[7],
+
+        # Cooling System
+        "fan_status": registers[8],
+        "coolant_temperature": registers[9],
+        "valve_position": registers[10],
+        "cooling_alarm": registers[11],
     }
 
 
-# ------------------------------------------------
-# INFLUX WRITE
-# ------------------------------------------------
-
 def write_to_influx(write_api, state):
     """
-    Запис телеметрії PLC в InfluxDB.
+    Запис усіх параметрів у InfluxDB.
     """
 
     point = (
         Point("plc_state")
+
+        # Pump Station
         .field("temperature", state["temperature"])
         .field("pressure", state["pressure"])
         .field("water_level", state["water_level"])
         .field("pump_status", state["pump_status"])
+
+        # Conveyor Line
         .field("conveyor_status", state["conveyor_status"])
         .field("motor_speed", state["motor_speed"])
-        .field("item_count", state["item_count"])
+        .field("motor_current", state["motor_current"])
         .field("emergency_stop", state["emergency_stop"])
+
+        # Cooling System
+        .field("fan_status", state["fan_status"])
+        .field("coolant_temperature", state["coolant_temperature"])
+        .field("valve_position", state["valve_position"])
+        .field("cooling_alarm", state["cooling_alarm"])
+
         .time(datetime.now(timezone.utc), WritePrecision.NS)
     )
 
@@ -109,15 +99,7 @@ def write_to_influx(write_api, state):
     )
 
 
-# ------------------------------------------------
-# COLLECTOR LOOP
-# ------------------------------------------------
-
 def start_collector(interval=2):
-    """
-    Основний цикл збору телеметрії.
-    """
-
     influx_client = InfluxDBClient(
         url=INFLUXDB_URL,
         token=INFLUXDB_TOKEN,
@@ -127,9 +109,8 @@ def start_collector(interval=2):
     write_api = influx_client.write_api()
 
     print("Telemetry collector started...")
-    print("Reading PLC data and writing to InfluxDB")
-    print("Systems: Pump Station + Conveyor Line")
-    print("-" * 70)
+    print("Systems: Pump Station + Conveyor Line + Cooling System")
+    print("-" * 90)
 
     while True:
         try:
@@ -143,8 +124,12 @@ def start_collector(interval=2):
                 f"pump_status={state['pump_status']} | "
                 f"conveyor_status={state['conveyor_status']} | "
                 f"motor_speed={state['motor_speed']} | "
-                f"item_count={state['item_count']} | "
-                f"emergency_stop={state['emergency_stop']}"
+                f"motor_current={state['motor_current']} | "
+                f"emergency_stop={state['emergency_stop']} | "
+                f"fan_status={state['fan_status']} | "
+                f"coolant_temperature={state['coolant_temperature']} | "
+                f"valve_position={state['valve_position']} | "
+                f"cooling_alarm={state['cooling_alarm']}"
             )
 
         except Exception as error:

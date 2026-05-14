@@ -12,26 +12,44 @@ from pymodbus.device import ModbusDeviceIdentification
 # ------------------------------------------------
 # PLC REGISTERS
 # ------------------------------------------------
-# 0 - temperature
-# 1 - pressure
-# 2 - water_level
-# 3 - pump_status
-# 4 - conveyor_status
-# 5 - motor_speed
-# 6 - item_count
-# 7 - emergency_stop
+# Pump Station
+# 0  - temperature
+# 1  - pressure
+# 2  - water_level
+# 3  - pump_status
+#
+# Conveyor Line
+# 4  - conveyor_status
+# 5  - motor_speed
+# 6  - motor_current
+# 7  - emergency_stop
+#
+# Cooling System
+# 8  - fan_status
+# 9  - coolant_temperature
+# 10 - valve_position
+# 11 - cooling_alarm
 # ------------------------------------------------
 
 
 INITIAL_VALUES = [
+    # Pump Station
     28,   # temperature
     5,    # pressure
     60,   # water_level
     1,    # pump_status
+
+    # Conveyor Line
     1,    # conveyor_status
     70,   # motor_speed
-    0,    # item_count
+    12,   # motor_current
     0,    # emergency_stop
+
+    # Cooling System
+    1,    # fan_status
+    28,   # coolant_temperature
+    70,   # valve_position
+    0,    # cooling_alarm
 ]
 
 
@@ -43,20 +61,12 @@ store = ModbusSlaveContext(
 context = ModbusServerContext(slaves=store, single=True)
 
 
-# ------------------------------------------------
-# PLC DEVICE INFO
-# ------------------------------------------------
-
 identity = ModbusDeviceIdentification()
 identity.VendorName = "ICSCyberRange"
 identity.ProductName = "Virtual PLC"
-identity.ModelName = "Pump Station + Conveyor Line Simulator"
-identity.MajorMinorRevision = "2.0"
+identity.ModelName = "Pump Station + Conveyor Line + Cooling System"
+identity.MajorMinorRevision = "3.1"
 
-
-# ------------------------------------------------
-# SAFE MODBUS HELPERS
-# ------------------------------------------------
 
 def read_register(address, default=0):
     """
@@ -92,61 +102,66 @@ def write_all_registers(values):
         write_register(address, value)
 
 
-# ------------------------------------------------
-# PROCESS SIMULATION
-# ------------------------------------------------
-
 def process_simulation():
     """
-    Симуляція двох промислових підсистем:
+    Симуляція трьох промислових підсистем:
     1. Pump Station
     2. Conveyor Line
+    3. Cooling System
     """
 
-    # Початкові внутрішні значення процесу
+    # Pump Station
     temperature = 28
     pressure = 5
     water_level = 60
 
+    # Conveyor Line
     conveyor_status = 1
     motor_speed = 70
-    item_count = 0
+    motor_current = 12
     emergency_stop = 0
+
+    # Cooling System
+    fan_status = 1
+    coolant_temperature = 28
+    valve_position = 70
+    cooling_alarm = 0
 
     while True:
         # ------------------------------------------------
-        # READ CONTROL REGISTERS FROM MODBUS
+        # READ CONTROL REGISTERS
         # ------------------------------------------------
 
         pump_status = read_register(3, default=1)
+
         conveyor_status = read_register(4, default=1)
         motor_speed_command = read_register(5, default=70)
         emergency_stop = read_register(7, default=0)
 
-        # Нормалізація керуючих значень
+        fan_status = read_register(8, default=1)
+        valve_position_command = read_register(10, default=70)
+
         pump_status = 1 if pump_status == 1 else 0
         conveyor_status = 1 if conveyor_status == 1 else 0
         emergency_stop = 1 if emergency_stop == 1 else 0
+        fan_status = 1 if fan_status == 1 else 0
 
         # ------------------------------------------------
         # PUMP STATION LOGIC
         # ------------------------------------------------
 
         if pump_status == 1:
-            # Рівень води росте повільно, але не вище 100%
             if water_level < 100:
                 water_level += random.choice([0, 1])
 
-            # Тиск прагне до робочого діапазону 6-9 bar
-            if pressure < 8:
+            if pressure < 7:
                 pressure += 1
             elif pressure > 9:
                 pressure -= 1
             else:
-                pressure += random.choice([-1, 0, 1])
+                pressure += random.choice([-1, 0, 0, 1])
 
-            # Температура стабілізується в реалістичному діапазоні 28-38°C
-            if temperature < 32:
+            if temperature < 30:
                 temperature += random.choice([0, 1])
             elif temperature > 38:
                 temperature -= random.choice([0, 1])
@@ -154,18 +169,15 @@ def process_simulation():
                 temperature += random.choice([-1, 0, 0, 1])
 
         else:
-            # Якщо насос вимкнено — рівень і тиск падають
             if water_level > 0:
                 water_level -= random.choice([0, 1, 1])
 
             if pressure > 0:
                 pressure -= random.choice([0, 1])
 
-            # Температура повільно повертається до кімнатної
             if temperature > 24:
                 temperature -= random.choice([0, 1])
 
-        # Фізичні межі Pump Station
         temperature = max(18, min(60, temperature))
         pressure = max(0, min(12, pressure))
         water_level = max(0, min(100, water_level))
@@ -175,28 +187,58 @@ def process_simulation():
         # ------------------------------------------------
 
         if emergency_stop == 1:
-            # Аварійна зупинка має пріоритет
             conveyor_status = 0
             motor_speed = 0
+            motor_current = 0
 
         else:
-            # Конвеєр працює, якщо немає аварійної зупинки
             if conveyor_status == 1:
-                # Команда швидкості з Modbus, але в межах 0-120
                 motor_speed = max(0, min(120, motor_speed_command))
 
-                # Якщо швидкість нормальна — деталі обробляються
-                if motor_speed > 0:
-                    item_count += max(1, motor_speed // 40)
+                # Реалістична залежність:
+                # чим більша швидкість - тим більший струм двигуна
+                base_current = 5
+                load_current = motor_speed // 6
+                noise = random.choice([-1, 0, 0, 1])
+
+                motor_current = base_current + load_current + noise
+
+                # якщо швидкість небезпечна, струм ще більший
+                if motor_speed > 100:
+                    motor_current += random.choice([3, 4, 5])
 
             else:
                 motor_speed = 0
+                motor_current = 0
 
-        # Захист від переповнення лічильника
-        item_count = min(item_count, 9999)
+        motor_current = max(0, min(40, motor_current))
 
         # ------------------------------------------------
-        # WRITE CURRENT STATE TO MODBUS REGISTERS
+        # COOLING SYSTEM LOGIC
+        # ------------------------------------------------
+
+        valve_position = max(0, min(100, valve_position_command))
+
+        if fan_status == 1 and valve_position >= 30:
+            if coolant_temperature > 28:
+                coolant_temperature -= random.choice([0, 1])
+            elif coolant_temperature < 24:
+                coolant_temperature += random.choice([0, 1])
+            else:
+                coolant_temperature += random.choice([-1, 0, 0, 1])
+
+        else:
+            coolant_temperature += random.choice([1, 1, 2])
+
+        coolant_temperature = max(15, min(80, coolant_temperature))
+
+        if coolant_temperature > 45 or fan_status == 0 or valve_position < 30:
+            cooling_alarm = 1
+        else:
+            cooling_alarm = 0
+
+        # ------------------------------------------------
+        # WRITE REGISTERS
         # ------------------------------------------------
 
         values = [
@@ -204,10 +246,16 @@ def process_simulation():
             pressure,
             water_level,
             pump_status,
+
             conveyor_status,
             motor_speed,
-            item_count,
+            motor_current,
             emergency_stop,
+
+            fan_status,
+            coolant_temperature,
+            valve_position,
+            cooling_alarm,
         ]
 
         write_all_registers(values)
@@ -216,38 +264,40 @@ def process_simulation():
         # CONSOLE OUTPUT
         # ------------------------------------------------
 
-        print("=" * 60)
-        print("PUMP STATION")
-        print(f"Temperature      : {temperature} °C")
-        print(f"Pressure         : {pressure} bar")
-        print(f"Water Level      : {water_level} %")
-        print(f"Pump Status      : {'ON' if pump_status else 'OFF'}")
+        print("=" * 70)
 
-        print("-" * 60)
+        print("PUMP STATION")
+        print(f"Temperature       : {temperature} °C")
+        print(f"Pressure          : {pressure} bar")
+        print(f"Water Level       : {water_level} %")
+        print(f"Pump Status       : {'ON' if pump_status else 'OFF'}")
+
+        print("-" * 70)
+
         print("CONVEYOR LINE")
-        print(f"Conveyor Status  : {'ON' if conveyor_status else 'OFF'}")
-        print(f"Motor Speed      : {motor_speed} %")
-        print(f"Item Count       : {item_count}")
-        print(f"Emergency Stop   : {'ACTIVE' if emergency_stop else 'OFF'}")
+        print(f"Conveyor Status   : {'ON' if conveyor_status else 'OFF'}")
+        print(f"Motor Speed       : {motor_speed} %")
+        print(f"Motor Current     : {motor_current} A")
+        print(f"Emergency Stop    : {'ACTIVE' if emergency_stop else 'OFF'}")
+
+        print("-" * 70)
+
+        print("COOLING SYSTEM")
+        print(f"Fan Status        : {'ON' if fan_status else 'OFF'}")
+        print(f"Coolant Temp      : {coolant_temperature} °C")
+        print(f"Valve Position    : {valve_position} %")
+        print(f"Cooling Alarm     : {'ACTIVE' if cooling_alarm else 'OFF'}")
 
         time.sleep(2)
 
-
-# ------------------------------------------------
-# START SIMULATION THREAD
-# ------------------------------------------------
 
 thread = threading.Thread(target=process_simulation)
 thread.daemon = True
 thread.start()
 
 
-# ------------------------------------------------
-# START MODBUS TCP SERVER
-# ------------------------------------------------
-
 print("PLC Simulator started on port 5020")
-print("Systems: Pump Station + Conveyor Line")
+print("Systems: Pump Station + Conveyor Line + Cooling System")
 
 StartTcpServer(
     context,
