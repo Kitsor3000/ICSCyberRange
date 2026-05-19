@@ -923,6 +923,18 @@ def generate_pdf_report_safe():
         return False, str(error)
 
 
+
+def read_code_template(path):
+    """
+    Зчитує Python-шаблон з папки labs/templates.
+    Якщо файл не знайдено — повертає повідомлення.
+    """
+
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return file.read()
+    except FileNotFoundError:
+        return f"File not found: {path}"
 # ------------------------------------------------
 # SIDEBAR
 # ------------------------------------------------
@@ -1583,6 +1595,246 @@ elif page == "Training":
 
 
 # ------------------------------------------------
+# PAGE: CODE LAB
+# ------------------------------------------------
+
+elif page == "Code Lab":
+    render_header(
+        "⌘ Code Lab",
+        "Практичний режим: як атаки, захист і recovery працюють під капотом."
+    )
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Code Lab створений для того, щоб користувач не просто натискав кнопки,
+        а розумів, як працюють атаки через Modbus TCP, як Blue Team виявляє
+        аномалії та як recovery повертає систему в нормальний стан.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.subheader("1. Modbus Register Map")
+
+    register_rows = [
+        "| Register | Parameter | System | Normal value/range |",
+        "|---:|---|---|---|",
+        "| 0 | `temperature` | Pump Station | 18–45 °C |",
+        "| 1 | `pressure` | Pump Station | 2–10 bar |",
+        "| 2 | `water_level` | Pump Station | 20–100 % |",
+        "| 3 | `pump_status` | Pump Station | 1 = ON |",
+        "| 4 | `conveyor_status` | Conveyor Line | 1 = ON |",
+        "| 5 | `motor_speed` | Conveyor Line | 40–100 % |",
+        "| 6 | `motor_current` | Conveyor Line | 5–25 A |",
+        "| 7 | `emergency_stop` | Conveyor Line | 0 = OFF |",
+        "| 8 | `fan_status` | Cooling System | 1 = ON |",
+        "| 9 | `coolant_temperature` | Cooling System | 18–40 °C |",
+        "| 10 | `valve_position` | Cooling System | 30–100 % |",
+        "| 11 | `cooling_alarm` | Cooling System | 0 = OFF |",
+    ]
+
+    st.markdown("\n".join(register_rows))
+
+    st.divider()
+
+    st.subheader("2. Як працює атака")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        У цьому проєкті атака — це запис небезпечного значення у Modbus-регістр.
+        Наприклад, якщо записати <code>0</code> у register <code>3</code>,
+        то <code>pump_status</code> стане OFF, і насос вимкнеться.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    attack_example = """
+from pymodbus.client.sync import ModbusTcpClient
+
+client = ModbusTcpClient("127.0.0.1", port=5020)
+client.connect()
+
+# Register 3 = pump_status
+# 1 = ON, 0 = OFF
+client.write_register(3, 0, unit=1)
+
+client.close()
+"""
+
+    st.code(attack_example, language="python")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Простими словами: код підключається до PLC Simulator,
+        знаходить потрібний register і записує туди нове значення.
+        PLC Simulator сприймає це як команду керування.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+
+    st.subheader("3. Приклад атаки на Conveyor Line")
+
+    conveyor_attack_example = """
+from pymodbus.client.sync import ModbusTcpClient
+
+client = ModbusTcpClient("127.0.0.1", port=5020)
+client.connect()
+
+# Register 5 = motor_speed
+# Normal value: 40-100
+# Attack value: 120
+client.write_register(5, 120, unit=1)
+
+client.close()
+"""
+
+    st.code(conveyor_attack_example, language="python")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Цей приклад змінює швидкість двигуна конвеєра на 120%.
+        Для системи це небезпечне значення, тому Blue Team має виявити аномалію.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+
+    st.subheader("4. Як працює захист")
+
+    defense_example = """
+def detect_anomalies(state):
+    alerts = []
+
+    for tag, value in state.items():
+        min_value, max_value = NORMAL_RANGES[tag]
+
+        if value < min_value or value > max_value:
+            alerts.append(
+                f"{tag} = {value}, normal: {min_value}-{max_value}"
+            )
+
+    return alerts
+"""
+
+    st.code(defense_example, language="python")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Blue Team працює за простим принципом:
+        зчитує поточний стан PLC і порівнює кожне значення з нормальним діапазоном.
+        Якщо значення вийшло за межі — це аномалія.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+
+    st.subheader("5. Як працює recovery")
+
+    recovery_example = """
+from pymodbus.client.sync import ModbusTcpClient
+
+client = ModbusTcpClient("127.0.0.1", port=5020)
+client.connect()
+
+client.write_register(4, 1, unit=1)   # conveyor_status = ON
+client.write_register(5, 70, unit=1)  # motor_speed = 70
+client.write_register(6, 12, unit=1)  # motor_current = 12
+client.write_register(7, 0, unit=1)   # emergency_stop = OFF
+
+client.close()
+"""
+
+    st.code(recovery_example, language="python")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Recovery не є магією. Це звичайний запис нормальних безпечних значень
+        назад у Modbus-регістри.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+
+    st.subheader("6. Готові шаблони для практики")
+
+    template_choice = st.selectbox(
+        "Choose code template",
+        [
+            "custom_attack_template.py",
+            "custom_defense_template.py",
+            "recovery_template.py",
+        ]
+    )
+
+    template_path = f"labs/templates/{template_choice}"
+    template_code = read_code_template(template_path)
+
+    st.code(template_code, language="python")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        Щоб використати шаблон:
+        <br>1. Відкрий файл у папці <code>labs/templates</code>.
+        <br>2. Зміни register, value або rule.
+        <br>3. Запусти файл через термінал.
+        <br>4. Перевір результат у Streamlit, Blue Team і Grafana.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+
+    st.subheader("7. Практичне завдання")
+
+    st.markdown(
+        """
+        <div class="info-box">
+        <b>Завдання 1 — власна атака:</b><br>
+        1. Відкрий <code>labs/templates/custom_attack_template.py</code>.<br>
+        2. Зміни <code>REGISTER = 5</code> і <code>VALUE = 120</code>.<br>
+        3. Запусти файл командою <code>python labs/templates/custom_attack_template.py</code>.<br>
+        4. У Blue Team натисни <b>Run Full Anomaly Detection</b>.<br>
+        5. Перевір, що система знайшла аномалію <code>motor_speed</code>.<br>
+        6. Запусти recovery через інтерфейс або файл <code>recovery_template.py</code>.<br>
+        7. Перевір зміни в Grafana.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        """
+        <div class="info-box">
+        <b>Завдання 2 — власне правило захисту:</b><br>
+        1. Відкрий <code>labs/templates/custom_defense_template.py</code>.<br>
+        2. Зміни функцію <code>detect_custom_rule()</code>.<br>
+        3. Додай перевірку іншого параметра, наприклад <code>coolant_temperature</code>.<br>
+        4. Якщо температура більша за 40 — виведи ALERT.<br>
+        5. Запусти файл і перевір результат.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ------------------------------------------------
 # PAGE: HOW IT WORKS
 # ------------------------------------------------
 
@@ -1622,6 +1874,13 @@ elif page == "How It Works":
         <div class="info-box">
         <b>6. Grafana</b><br>
         Це система графіків. Вона показує, як змінюються параметри після атак і recovery.
+        </div>
+
+        <div class="info-box">
+        <b>7. Code Lab</b><br>
+        Це практичний режим, де користувач бачить код атак, захисту і recovery.
+        Він може змінити шаблони, написати власну просту атаку або правило захисту,
+        а потім перевірити результат у Streamlit, Blue Team і Grafana.
         </div>
         """,
         unsafe_allow_html=True
