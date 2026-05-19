@@ -936,6 +936,7 @@ pages = [
     "Red Team",
     "Blue Team",
     "Training",
+    "Code Lab",
     "How It Works",
 ]
 
