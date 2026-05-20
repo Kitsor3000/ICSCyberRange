@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import json
-import random
 from pathlib import Path
 from html import escape
 
@@ -146,6 +145,8 @@ ATTACKS = [
         "description": "Несанкціоноване вимкнення насоса.",
         "writes": [("pump_status", 0)],
         "duration": 0,
+        "mitre_id": "T0855",
+        "mitre_name": "Unauthorized Command Message",
     },
     {
         "system": "Pump Station",
@@ -155,6 +156,8 @@ ATTACKS = [
         "description": "Підміна температури та тиску насосної станції.",
         "writes": [("temperature", 999), ("pressure", 0)],
         "duration": 10,
+        "mitre_id": "T0836",
+        "mitre_name": "Modify Parameter",
     },
     {
         "system": "Pump Station",
@@ -164,6 +167,8 @@ ATTACKS = [
         "description": "Підміна рівня води в резервуарі.",
         "writes": [("water_level", 0)],
         "duration": 10,
+        "mitre_id": "T0836",
+        "mitre_name": "Modify Parameter",
     },
 
     # Conveyor Line
@@ -175,6 +180,8 @@ ATTACKS = [
         "description": "Примусова зупинка конвеєра.",
         "writes": [("conveyor_status", 0)],
         "duration": 0,
+        "mitre_id": "T0855",
+        "mitre_name": "Unauthorized Command Message",
     },
     {
         "system": "Conveyor Line",
@@ -184,6 +191,8 @@ ATTACKS = [
         "description": "Встановлення небезпечної швидкості двигуна.",
         "writes": [("motor_speed", 120)],
         "duration": 0,
+        "mitre_id": "T0836",
+        "mitre_name": "Modify Parameter",
     },
     {
         "system": "Conveyor Line",
@@ -193,6 +202,8 @@ ATTACKS = [
         "description": "Активація аварійної зупинки конвеєра.",
         "writes": [("emergency_stop", 1)],
         "duration": 0,
+        "mitre_id": "T0855",
+        "mitre_name": "Unauthorized Command Message",
     },
 
     # Cooling System
@@ -204,6 +215,8 @@ ATTACKS = [
         "description": "Вимкнення вентилятора охолодження.",
         "writes": [("fan_status", 0)],
         "duration": 0,
+        "mitre_id": "T0855",
+        "mitre_name": "Unauthorized Command Message",
     },
     {
         "system": "Cooling System",
@@ -213,6 +226,8 @@ ATTACKS = [
         "description": "Закриття клапана охолодження.",
         "writes": [("valve_position", 0)],
         "duration": 0,
+        "mitre_id": "T0836",
+        "mitre_name": "Modify Parameter",
     },
     {
         "system": "Cooling System",
@@ -222,6 +237,8 @@ ATTACKS = [
         "description": "Підміна температури охолоджуючої рідини.",
         "writes": [("coolant_temperature", 80)],
         "duration": 10,
+        "mitre_id": "T0836",
+        "mitre_name": "Modify Parameter",
     },
 ]
 
@@ -669,6 +686,14 @@ def render_attack_card(attack):
 
     duration_text = "Single write" if attack["duration"] == 0 else f"{attack['duration']} seconds"
 
+    mitre_id = attack.get("mitre_id", "")
+    mitre_name = attack.get("mitre_name", "")
+    mitre_block = (
+        f'<p style="font-size:11px;color:#94a3b8;margin-top:8px;">'
+        f'MITRE ATT&amp;CK ICS: <b>{escape(mitre_id)}</b> — {escape(mitre_name)}</p>'
+        if mitre_id else ""
+    )
+
     st.markdown(
         f"""
         <div class="attack-card danger">
@@ -677,6 +702,7 @@ def render_attack_card(attack):
             <p>{escape(attack['description'])}</p>
             <p>{writes_text}</p>
             <p><b>Mode:</b> {duration_text}</p>
+            {mitre_block}
         </div>
         """,
         unsafe_allow_html=True
@@ -947,8 +973,9 @@ pages = [
     "Systems",
     "Red Team",
     "Blue Team",
-    "Training",
     "Code Lab",
+    "Scenarios",
+    "Statistics",
     "How It Works",
 ]
 
@@ -1519,82 +1546,6 @@ elif page == "Blue Team":
 
 
 # ------------------------------------------------
-# PAGE: TRAINING
-# ------------------------------------------------
-
-elif page == "Training":
-    render_header(
-        "✦ Training Mode",
-        "Перевірка знань користувача по всіх трьох промислових підсистемах.",
-        variant="purple"
-    )
-
-    st.markdown(
-        """
-        <div class="info-box">
-        У цьому режимі система випадково обирає питання по Pump Station,
-        Conveyor Line або Cooling System. Користувач відповідає, а платформа
-        пояснює правильну відповідь.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if "training_question" not in st.session_state:
-        st.session_state["training_question"] = random.choice(TRAINING_QUESTIONS)
-
-    question = st.session_state["training_question"]
-
-    st.subheader(f"System: {question['system']}")
-    st.write(question["question"])
-
-    selected_answer = st.radio(
-        "Choose answer",
-        question["options"],
-        key="training_answer"
-    )
-
-    quiz_col1, quiz_col2 = st.columns(2)
-
-    with quiz_col1:
-        if st.button("Check Answer"):
-            if selected_answer == question["answer"]:
-                st.success("Правильно")
-                log_event(
-                    event_type="TRAINING_CORRECT_ANSWER",
-                    description=f"Правильна відповідь у Training Mode: {question['question']}",
-                    state=state
-                )
-            else:
-                st.error("Неправильно")
-                log_event(
-                    event_type="TRAINING_WRONG_ANSWER",
-                    description=f"Неправильна відповідь у Training Mode: {question['question']}",
-                    state=state
-                )
-
-            st.info(question["explanation"])
-
-    with quiz_col2:
-        if st.button("Next Random Question"):
-            st.session_state["training_question"] = random.choice(TRAINING_QUESTIONS)
-            st.rerun()
-
-    st.divider()
-
-    st.subheader("Short Guide")
-
-    st.write(
-        """
-        - Red Team запускає атаку.
-        - Blue Team знаходить проблему.
-        - Recovery повертає систему в норму.
-        - PDF Report зберігає результати симуляції.
-        """
-    )
-
-
-# ------------------------------------------------
 # PAGE: CODE LAB
 # ------------------------------------------------
 
@@ -1833,6 +1784,479 @@ client.close()
         """,
         unsafe_allow_html=True
     )
+
+# ------------------------------------------------
+# PAGE: SCENARIOS
+# ------------------------------------------------
+
+elif page == "Scenarios":
+    st.markdown(
+        """
+        <style>
+        .lvl-card {
+            padding: 18px 14px;
+            border-radius: 16px;
+            background: rgba(15,23,42,0.92);
+            border: 1px solid rgba(148,163,184,0.18);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            margin-bottom: 4px;
+        }
+        .lvl-card:hover { border-color: rgba(96,165,250,0.5); transform: translateY(-2px); }
+        .lvl-beginner  { border-left: 5px solid #22c55e; }
+        .lvl-intermediate { border-left: 5px solid #eab308; }
+        .lvl-advanced  { border-left: 5px solid #ef4444; }
+
+        .step-done {
+            padding: 12px 16px; border-radius: 12px; margin-bottom: 8px;
+            background: rgba(34,197,94,0.08);
+            border: 1px solid rgba(34,197,94,0.25);
+            border-left: 4px solid #22c55e;
+        }
+        .step-active {
+            padding: 14px 18px; border-radius: 14px; margin-bottom: 8px;
+            background: rgba(234,179,8,0.10);
+            border: 1px solid rgba(234,179,8,0.40);
+            border-left: 5px solid #eab308;
+            box-shadow: 0 6px 22px rgba(0,0,0,0.22);
+        }
+        .step-pending {
+            padding: 12px 16px; border-radius: 12px; margin-bottom: 8px;
+            background: rgba(15,23,42,0.60);
+            border: 1px solid rgba(148,163,184,0.12);
+            border-left: 4px solid rgba(100,116,139,0.35);
+            opacity: 0.55;
+        }
+
+        .quiz-card {
+            padding: 20px; border-radius: 16px; margin-bottom: 14px;
+            background: rgba(15,23,42,0.92);
+            border: 1px solid rgba(148,163,184,0.18);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.20);
+        }
+        .quiz-badge-single {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+            background: rgba(37,99,235,0.25); color: #93c5fd;
+            border: 1px solid rgba(96,165,250,0.35); margin-bottom: 10px;
+        }
+        .quiz-badge-multi {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+            background: rgba(147,51,234,0.25); color: #c4b5fd;
+            border: 1px solid rgba(192,132,252,0.35); margin-bottom: 10px;
+        }
+        .quiz-question { font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 12px; }
+
+        .score-block {
+            padding: 22px; border-radius: 18px; text-align: center;
+            background: rgba(15,23,42,0.95);
+            border: 1px solid rgba(96,165,250,0.30);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.28);
+            margin-top: 8px;
+        }
+        .score-number { font-size: 52px; font-weight: 900; line-height: 1; }
+        .score-label  { font-size: 14px; color: #94a3b8; margin-top: 6px; }
+
+        .mitre-badge {
+            display: inline-block; padding: 5px 14px; border-radius: 999px;
+            font-size: 12px; font-weight: 600;
+            background: rgba(220,38,38,0.15); color: #fca5a5;
+            border: 1px solid rgba(248,113,113,0.30);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    render_header(
+        "◈ Training Scenarios",
+        "Покрокові навчальні сценарії з тестами: Beginner, Intermediate, Advanced.",
+        variant="purple"
+    )
+
+    SCENARIO_FILES = {
+        "Beginner":     "scenarios/beginner.json",
+        "Intermediate": "scenarios/intermediate.json",
+        "Advanced":     "scenarios/advanced.json",
+    }
+    LEVEL_COLORS = {
+        "Beginner":     ("#22c55e", "lvl-beginner",     "Easy",   "5 питань"),
+        "Intermediate": ("#eab308", "lvl-intermediate",  "Medium", "5 питань"),
+        "Advanced":     ("#ef4444", "lvl-advanced",      "Hard",   "5 питань"),
+    }
+
+    # ── Level selector ────────────────────────────────────────────────
+    lc1, lc2, lc3 = st.columns(3)
+    for col, (lvl, (color, css, diff, q_count)) in zip(
+        [lc1, lc2, lc3], LEVEL_COLORS.items()
+    ):
+        with col:
+            st.markdown(
+                f"""
+                <div class="lvl-card {css}">
+                    <div style="font-size:22px;font-weight:900;color:{color};">{lvl}</div>
+                    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">
+                        {diff} · {q_count}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    scenario_level = st.radio(
+        "Рівень сценарію",
+        list(SCENARIO_FILES.keys()),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="scenario_level_radio"
+    )
+
+    if st.session_state.get("_prev_scenario_level") != scenario_level:
+        st.session_state["scenario_step"] = 0
+        st.session_state[f"quiz_submitted_{scenario_level}"] = False
+        st.session_state["_prev_scenario_level"] = scenario_level
+
+    scenario_path = SCENARIO_FILES[scenario_level]
+
+    try:
+        with open(scenario_path, "r", encoding="utf-8") as f:
+            scenario = json.load(f)
+
+        color, _, diff, _ = LEVEL_COLORS[scenario_level]
+        mitre = scenario.get("mitre_technique", {})
+
+        # ── Scenario info ─────────────────────────────────────────────
+        st.markdown(
+            f"""
+            <div class="system-card" style="border-left:5px solid {color};margin-top:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;
+                                    letter-spacing:.06em;margin-bottom:6px;">{escape(diff)} level</div>
+                        <h3 style="margin:0 0 8px;">{escape(scenario.get('title',''))}</h3>
+                        <p style="margin:0 0 8px;color:#cbd5e1;">{escape(scenario.get('description',''))}</p>
+                        <p style="margin:0;"><b>Мета:</b> {escape(scenario.get('goal',''))}</p>
+                    </div>
+                    {
+                        f'<span class="mitre-badge">MITRE {escape(mitre.get("id",""))}<br>'
+                        f'<span style="font-weight:400;">{escape(mitre.get("name",""))}</span></span>'
+                        if mitre else ""
+                    }
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # ── Steps ─────────────────────────────────────────────────────
+        steps = scenario.get("steps", [])
+        total_steps = len(steps)
+        current_step = st.session_state.get("scenario_step", 0)
+
+        st.markdown(
+            f"<div style='margin:18px 0 6px;font-size:13px;color:#94a3b8;'>"
+            f"PROGRESS &nbsp; <b style='color:#f8fafc;'>{min(current_step, total_steps)}/{total_steps}</b>"
+            f" steps completed</div>",
+            unsafe_allow_html=True
+        )
+        st.progress(
+            min(current_step, total_steps) / max(total_steps, 1),
+        )
+
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+        for i, step in enumerate(steps):
+            if i < current_step:
+                css_cls, icon, title_color = "step-done",    "✓", "#86efac"
+            elif i == current_step:
+                css_cls, icon, title_color = "step-active",  "▶", "#fde68a"
+            else:
+                css_cls, icon, title_color = "step-pending", "○", "#94a3b8"
+
+            st.markdown(
+                f"""
+                <div class="{css_cls}">
+                    <div style="font-size:13px;color:{title_color};font-weight:700;margin-bottom:5px;">
+                        {icon} &nbsp; Step {step['step']}: {escape(step['title'])}
+                    </div>
+                    <div style="font-size:13px;color:#cbd5e1;line-height:1.55;">
+                        {escape(step['description'])}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        nav1, nav2, nav3, nav4 = st.columns([1, 1, 1, 2])
+        with nav1:
+            if st.button("← Back", disabled=current_step == 0):
+                st.session_state["scenario_step"] = current_step - 1
+                st.rerun()
+        with nav2:
+            if st.button("Next →", disabled=current_step >= total_steps):
+                st.session_state["scenario_step"] = current_step + 1
+                st.rerun()
+        with nav3:
+            if st.button("Reset"):
+                st.session_state["scenario_step"] = 0
+                st.session_state[f"quiz_submitted_{scenario_level}"] = False
+                st.rerun()
+
+        if current_step >= total_steps:
+            st.success("Всі кроки сценарію пройдено! Переходь до Knowledge Check.")
+
+        # ── Quiz ──────────────────────────────────────────────────────
+        st.divider()
+        st.markdown(
+            "<h3 style='margin-bottom:4px;'>Knowledge Check</h3>"
+            "<p style='color:#94a3b8;font-size:13px;margin-top:0;'>"
+            "Перевір своє розуміння сценарію. Деякі питання мають кілька правильних відповідей.</p>",
+            unsafe_allow_html=True
+        )
+
+        quizzes = scenario.get("quizzes", [])
+        quiz_submitted_key = f"quiz_submitted_{scenario_level}"
+
+        if not quizzes:
+            st.info("Для цього сценарію тести ще не додані.")
+        else:
+            user_answers = {}
+
+            for qi, quiz in enumerate(quizzes):
+                qid = quiz.get("id", str(qi))
+                qtype = quiz.get("type", "single")
+                badge_cls = "quiz-badge-multi" if qtype == "multi" else "quiz-badge-single"
+                badge_txt = "MULTI-SELECT" if qtype == "multi" else "SINGLE"
+                hint = " (обери всі правильні)" if qtype == "multi" else " (одна правильна відповідь)"
+
+                st.markdown(
+                    f"""
+                    <div class="quiz-card">
+                        <span class="{badge_cls}">{badge_txt}</span>
+                        <div class="quiz-question">
+                            Q{qi + 1}. {escape(quiz['text'])}<span style="color:#64748b;font-weight:400;font-size:13px;">{hint}</span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                opts = quiz.get("options", [])
+                widget_key = f"quiz_{scenario_level}_{qid}"
+
+                if qtype == "multi":
+                    chosen = st.multiselect(
+                        f"Відповідь на Q{qi+1}",
+                        opts,
+                        key=widget_key,
+                        label_visibility="collapsed"
+                    )
+                    user_answers[qid] = [opts.index(c) for c in chosen if c in opts]
+                else:
+                    chosen = st.radio(
+                        f"Відповідь на Q{qi+1}",
+                        opts,
+                        key=widget_key,
+                        label_visibility="collapsed"
+                    )
+                    user_answers[qid] = (
+                        [opts.index(chosen)] if chosen in opts else []
+                    )
+
+                if st.session_state.get(quiz_submitted_key):
+                    correct = sorted(quiz.get("correct_answers", []))
+                    given   = sorted(user_answers[qid])
+                    if given == correct:
+                        st.success("Правильно!")
+                    else:
+                        correct_labels = ", ".join(opts[i] for i in correct if i < len(opts))
+                        st.error(f"Неправильно. Правильно: {correct_labels}")
+                    st.info(quiz.get("explanation", ""))
+
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            btn_col1, btn_col2 = st.columns([1, 3])
+
+            with btn_col1:
+                if st.button("Перевірити відповіді", type="primary"):
+                    st.session_state[quiz_submitted_key] = True
+                    st.session_state[f"quiz_answers_{scenario_level}"] = user_answers
+                    st.rerun()
+
+            with btn_col2:
+                if st.button("Скинути тести"):
+                    st.session_state[quiz_submitted_key] = False
+                    for quiz in quizzes:
+                        qid = quiz.get("id", "")
+                        key = f"quiz_{scenario_level}_{qid}"
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+
+            if st.session_state.get(quiz_submitted_key):
+                saved = st.session_state.get(f"quiz_answers_{scenario_level}", {})
+                correct_count = sum(
+                    1 for quiz in quizzes
+                    if sorted(saved.get(quiz.get("id", ""), [])) == sorted(quiz.get("correct_answers", []))
+                )
+                total_q = len(quizzes)
+                pct = int(correct_count / total_q * 100) if total_q else 0
+
+                if pct == 100:
+                    score_color, verdict = "#22c55e", "Відмінно!"
+                elif pct >= 60:
+                    score_color, verdict = "#eab308", "Добре!"
+                else:
+                    score_color, verdict = "#ef4444", "Потрібно повторити"
+
+                st.markdown(
+                    f"""
+                    <div class="score-block">
+                        <div class="score-number" style="color:{score_color};">{correct_count}/{total_q}</div>
+                        <div class="score-label">{pct}% правильних відповідей &nbsp;·&nbsp; {verdict}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    except FileNotFoundError:
+        st.warning(f"Файл сценарію не знайдено: {scenario_path}")
+    except Exception as scenario_error:
+        st.error(f"Помилка завантаження сценарію: {scenario_error}")
+
+
+# ------------------------------------------------
+# PAGE: STATISTICS
+# ------------------------------------------------
+
+elif page == "Statistics":
+    render_header(
+        "◈ Statistics & Analytics",
+        "Аналіз журналу симуляції: атаки, виявлення аномалій, відновлення системи.",
+        variant="blue"
+    )
+
+    from collections import Counter
+
+    all_logs = read_logs(limit=1000)
+
+    if not all_logs:
+        st.info("Журнал порожній. Запусти симуляцію, атаки та recovery — статистика з'явиться тут.")
+    else:
+        ATTACK_KEYS = [
+            "ATTACK", "INJECTION", "SPOOFING", "OVERDRIVE",
+            "ABUSE", "SHUTDOWN", "MANIPULATION",
+        ]
+
+        attack_count = sum(
+            1 for r in all_logs
+            if any(k in r.get("event_type", "") for k in ATTACK_KEYS)
+            or r.get("event_type") == "CUSTOM_ATTACK"
+        )
+        detection_count = sum(1 for r in all_logs if r.get("event_type") == "ANOMALY_DETECTION")
+        recovery_count = sum(1 for r in all_logs if "RECOVERY" in r.get("event_type", ""))
+        training_count = sum(1 for r in all_logs if "TRAINING" in r.get("event_type", ""))
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            render_metric_card("Total Events", len(all_logs), "", "All recorded")
+        with c2:
+            render_metric_card("Attacks", attack_count, "", "Red Team", status="danger")
+        with c3:
+            render_metric_card("Detections", detection_count, "", "Blue Team", status="warning")
+        with c4:
+            render_metric_card("Recoveries", recovery_count, "", "System restored", status="normal")
+        with c5:
+            render_metric_card("Training", training_count, "", "Quiz answers")
+
+        st.divider()
+
+        col_left, col_right = st.columns(2)
+
+        with col_left:
+            st.subheader("Events by Type")
+            event_counts = Counter(r.get("event_type", "") for r in all_logs)
+            for event_type, count in sorted(event_counts.items(), key=lambda x: -x[1]):
+                bar_pct = count / len(all_logs)
+                bar_w = max(1, int(bar_pct * 100))
+                is_atk = any(k in event_type for k in ATTACK_KEYS)
+                bar_color = "#ef4444" if is_atk else ("#22c55e" if "RECOVERY" in event_type else "#60a5fa")
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                            <span style="color:#e5e7eb;"><code>{escape(event_type)}</code></span>
+                            <b style="color:#f8fafc;">{count}</b>
+                        </div>
+                        <div style="background:rgba(30,41,59,0.8);border-radius:4px;height:8px;width:100%;">
+                            <div style="background:{bar_color};border-radius:4px;height:8px;width:{bar_w}%;"></div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        with col_right:
+            st.subheader("Attack Coverage")
+            attacked_systems = set()
+            for r in all_logs:
+                et = r.get("event_type", "")
+                if "PUMP" in et:
+                    attacked_systems.add("Pump Station")
+                if "CONVEYOR" in et or "MOTOR" in et or "EMERGENCY" in et:
+                    attacked_systems.add("Conveyor Line")
+                if "FAN" in et or "VALVE" in et or "COOLING" in et:
+                    attacked_systems.add("Cooling System")
+
+            all_systems = ["Pump Station", "Conveyor Line", "Cooling System"]
+            for sys_name in all_systems:
+                was_attacked = sys_name in attacked_systems
+                color = "#ef4444" if was_attacked else "#22c55e"
+                label = "Under Attack" if was_attacked else "Not Attacked"
+                st.markdown(
+                    f"""
+                    <div class="system-card" style="border-left:5px solid {color};margin-bottom:10px;">
+                        <b style="color:#f8fafc;">{escape(sys_name)}</b><br>
+                        <span style="color:{color};font-size:13px;">{label}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        st.divider()
+        st.subheader("Event Log Table")
+
+        try:
+            import pandas as pd
+
+            df = pd.DataFrame(all_logs)
+
+            filter_options = ["All"] + sorted(set(r.get("event_type", "") for r in all_logs))
+            filter_type = st.selectbox("Filter by event type", filter_options)
+
+            if filter_type != "All":
+                df = df[df["event_type"] == filter_type]
+
+            display_cols = [c for c in ["timestamp", "event_type", "description"] if c in df.columns]
+            st.dataframe(df[display_cols], use_container_width=True, height=320)
+
+        except ImportError:
+            for row in reversed(all_logs[-20:]):
+                timestamp = escape(row.get("timestamp", ""))
+                event_type = escape(row.get("event_type", ""))
+                description = escape(row.get("description", ""))
+                st.markdown(
+                    f"""
+                    <div class="log-box">
+                        <b>{event_type}</b><br>
+                        <span style="color:#94a3b8;">{timestamp}</span><br>
+                        {description}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
 
 # ------------------------------------------------
 # PAGE: HOW IT WORKS

@@ -65,11 +65,13 @@ def read_plc_state():
 
 def write_to_influx(write_api, state):
     """
-    Запис усіх параметрів у InfluxDB.
+    Запис усіх параметрів у InfluxDB з тегами підсистем.
     """
 
     point = (
         Point("plc_state")
+        .tag("source", "plc_simulator")
+        .tag("environment", "icscyberrange")
 
         # Pump Station
         .field("temperature", state["temperature"])

@@ -1,0 +1,112 @@
+{
+  "scenario_id": "intermediate_conveyor_attack",
+  "title": "Intermediate: Multi-Stage Conveyor Line Attack",
+  "level": "Intermediate",
+  "description": "Двоетапна атака на конвеєрну лінію: спочатку встановлюється небезпечна швидкість двигуна (Motor Speed Overdrive), після чого активується аварійна зупинка (Emergency Stop Abuse). Blue Team повинна виявити обидва відхилення та відновити систему.",
+  "goal": "Навчитися виявляти та реагувати на складену атаку, яка спочатку перевантажує обладнання, а потім зупиняє його через аварійне відключення.",
+  "mitre_technique": {
+    "id": "T0836",
+    "name": "Modify Parameter"
+  },
+  "normal_state": {
+    "conveyor_status": "1 — конвеєр увімкнений",
+    "motor_speed": "40–100 %",
+    "motor_current": "5–25 A",
+    "emergency_stop": "0 — аварійна зупинка неактивна"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "title": "Перевірити стан конвеєрної лінії",
+      "description": "Оператор зчитує поточні значення: conveyor_status (R4) = 1, motor_speed (R5) = 70%, motor_current (R6) = 12A, emergency_stop (R7) = 0. Всі показники в нормі."
+    },
+    {
+      "step": 2,
+      "title": "Атака 1 — Motor Speed Overdrive (R5 = 120)",
+      "description": "Зловмисник записує 120 у register 5 (motor_speed). Допустима норма: 40–100%. Двигун починає працювати на 120% — небезпечне перевантаження. motor_current підвищується до 25+ A через залежність: струм = 5 + speed/6."
+    },
+    {
+      "step": 3,
+      "title": "Спостерігати наслідки Motor Speed Overdrive",
+      "description": "Blue Team бачить в Systems: motor_speed = 120 (DANGER), motor_current > 25 A (DANGER). Grafana показує різкий стрибок обох параметрів. Система переходить у стан WARNING."
+    },
+    {
+      "step": 4,
+      "title": "Атака 2 — Emergency Stop Abuse (R7 = 1)",
+      "description": "Через 5 секунд зловмисник записує 1 у register 7 (emergency_stop). PLC логіка: при emergency_stop = 1 → conveyor_status = 0, motor_speed = 0, motor_current = 0. Конвеєр зупиняється примусово."
+    },
+    {
+      "step": 5,
+      "title": "Виявити обидві аномалії (Blue Team)",
+      "description": "Blue Team → Run Full Anomaly Detection. Система виявляє: motor_speed (R5) вийшов за межу і emergency_stop (R7) = 1 (ACTIVE). Обидва відхилення фіксуються в журналі подій."
+    },
+    {
+      "step": 6,
+      "title": "Відновити Conveyor Line",
+      "description": "Recovery → Conveyor Line: emergency_stop = 0, conveyor_status = 1, motor_speed = 70, motor_current = 12. Перевірити в Systems: всі параметри в нормі. Grafana показує повернення до нормальних значень."
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "i1",
+      "type": "single",
+      "text": "Який register PLC відповідає за motor_speed конвеєрної лінії?",
+      "options": ["Register 4", "Register 5", "Register 6", "Register 7"],
+      "correct_answers": [1],
+      "explanation": "Register 5 = motor_speed. Register 4 = conveyor_status, Register 6 = motor_current, Register 7 = emergency_stop."
+    },
+    {
+      "id": "i2",
+      "type": "multi",
+      "text": "Які параметри конвеєрної лінії будуть аномальними відразу після Motor Speed Overdrive (R5 = 120)? (обери всі)",
+      "options": [
+        "motor_speed > 100 (вище норми 40–100%)",
+        "motor_current > 25 A (вище норми 5–25A)",
+        "emergency_stop = 1",
+        "conveyor_status = 0"
+      ],
+      "correct_answers": [0, 1],
+      "explanation": "Motor Speed Overdrive підвищує motor_speed до 120% і через залежність motor_current = 5 + speed/6 + noise струм перевищує 25A. Emergency_stop залишається 0 і conveyor_status = 1 до другого етапу атаки."
+    },
+    {
+      "id": "i3",
+      "type": "single",
+      "text": "Що відбувається з motor_speed та motor_current при emergency_stop = 1 у PLC логіці?",
+      "options": [
+        "motor_speed збільшується, motor_current падає",
+        "обидва залишаються незмінними",
+        "обидва падають до 0",
+        "motor_speed = 0, motor_current зростає"
+      ],
+      "correct_answers": [2],
+      "explanation": "PLC Simulator при emergency_stop = 1 встановлює conveyor_status = 0, motor_speed = 0, motor_current = 0 — аварійна зупинка зупиняє весь конвеєр."
+    },
+    {
+      "id": "i4",
+      "type": "multi",
+      "text": "Які кроки входять до правильного реагування Blue Team при двоетапній атаці? (обери всі)",
+      "options": [
+        "Запустити Run Full Anomaly Detection",
+        "Перевірити журнал подій для розуміння послідовності атаки",
+        "Виконати часткове відновлення тільки emergency_stop",
+        "Виконати повний Recovery для Conveyor Line",
+        "Вимкнути PLC Simulator і перезапустити"
+      ],
+      "correct_answers": [0, 1, 3],
+      "explanation": "Правильно: 1) виявити всі аномалії через Anomaly Detection, 2) переглянути журнал для хронології, 3) виконати повний Recovery Conveyor Line (не частковий). Частковий recovery залишить систему в нестабільному стані."
+    },
+    {
+      "id": "i5",
+      "type": "multi",
+      "text": "Які техніки MITRE ATT&CK for ICS застосовує зловмисник у цьому сценарії? (обери всі)",
+      "options": [
+        "T0836 — Modify Parameter (зміна motor_speed)",
+        "T0855 — Unauthorized Command Message (активація emergency_stop)",
+        "T0816 — Device Restart/Shutdown",
+        "T0830 — Man in the Middle"
+      ],
+      "correct_answers": [0, 1],
+      "explanation": "Motor Speed Overdrive — це T0836 (Modify Parameter): зловмисник змінює технологічний параметр на небезпечне значення. Emergency Stop Abuse — це T0855 (Unauthorized Command Message): несанкціонована команда керування обладнанням."
+    }
+  ]
+}

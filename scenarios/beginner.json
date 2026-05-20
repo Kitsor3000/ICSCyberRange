@@ -1,53 +1,108 @@
 {
   "scenario_id": "beginner_modbus_injection",
-  "title": "Beginner Scenario: Modbus Command Injection",
+  "title": "Beginner: Modbus Command Injection",
   "level": "Beginner",
-  "description": "Навчальний сценарій демонструє, як несанкціонований запис у Modbus-регістр може змінити стан промислового обладнання.",
-  "goal": "Зрозуміти, як атака Modbus Command Injection впливає на PLC та як оператор має реагувати на інцидент.",
+  "description": "Навчальний сценарій демонструє, як несанкціонований запис у Modbus-регістр може змінити стан промислового обладнання. Атакуючий вимикає насос, записуючи 0 у register 3.",
+  "goal": "Зрозуміти механізм атаки Modbus Command Injection, виявити аномалію та відновити насосну станцію.",
+  "mitre_technique": {
+    "id": "T0855",
+    "name": "Unauthorized Command Message"
+  },
   "normal_state": {
-    "temperature": "0-80",
-    "pressure": "1-15",
-    "water_level": "10-90",
-    "pump_status": "1 - насос увімкнений"
+    "pump_status": "1 — насос увімкнений",
+    "temperature": "18–45 °C",
+    "pressure": "2–10 bar",
+    "water_level": "20–100 %"
   },
   "steps": [
     {
       "step": 1,
       "title": "Перевірити нормальний стан системи",
-      "description": "Оператор перевіряє температуру, тиск, рівень води та стан насоса."
+      "description": "Оператор відкриває сторінку Systems і перевіряє: temperature (28°C), pressure (5 bar), water_level (60%), pump_status (ON). Всі параметри Pump Station в межах норми."
     },
     {
       "step": 2,
-      "title": "Запустити Modbus Command Injection",
-      "description": "Атакуючий записує значення 0 у register 3, який відповідає за стан насоса."
+      "title": "Запустити атаку Pump OFF",
+      "description": "Зловмисник відправляє Modbus-команду: write_register(address=3, value=0). Register 3 відповідає за pump_status. Значення змінюється з 1 (ON) на 0 (OFF)."
     },
     {
       "step": 3,
-      "title": "Виявити аномалію",
-      "description": "Система повинна визначити, що насос був вимкнений несанкціоновано."
+      "title": "Спостерігати наслідки",
+      "description": "Після вимкнення насоса: water_level починає знижуватися, pressure падає. Система переходить у стан UNDER ATTACK. Grafana показує стрибок на графіку pump_status."
     },
     {
       "step": 4,
-      "title": "Виконати відновлення",
-      "description": "Оператор запускає recovery-процедуру для повернення системи до безпечного стану."
+      "title": "Виявити аномалію (Blue Team)",
+      "description": "Оператор переходить у Blue Team → Run Full Anomaly Detection. Система виявляє: pump_status = 0 (норма: 1). Аномалія фіксується в журналі подій."
+    },
+    {
+      "step": 5,
+      "title": "Відновити Pump Station",
+      "description": "Оператор запускає Recovery → Pump Station. Значення повертаються до норми: pump_status = 1, temperature = 28, pressure = 5, water_level = 60. Система повертається в стан NORMAL."
     }
   ],
-  "attack": {
-    "name": "Pump OFF Attack",
-    "type": "Modbus Command Injection",
-    "target_register": 3,
-    "malicious_value": 0,
-    "expected_effect": "Насос переходить у стан OFF, після чого тиск і рівень води починають знижуватися."
-  },
-  "question": {
-    "text": "Яка правильна дія оператора після виявлення несанкціонованого вимкнення насоса?",
-    "options": [
-      "Ігнорувати зміну стану насоса",
-      "Запустити перевірку аномалій та recovery-процедуру",
-      "Вимкнути Grafana",
-      "Видалити telemetry collector"
-    ],
-    "correct_answer": 1,
-    "explanation": "Після виявлення атаки оператор має перевірити аномалії, оцінити стан PLC та виконати recovery, щоб повернути систему до безпечного стану."
-  }
+  "quizzes": [
+    {
+      "id": "b1",
+      "type": "single",
+      "text": "Який Modbus register відповідає за стан насоса (pump_status)?",
+      "options": ["Register 0", "Register 1", "Register 2", "Register 3"],
+      "correct_answers": [3],
+      "explanation": "Register 3 відповідає за pump_status. Значення 1 = ON, 0 = OFF. Саме у цей регістр записує 0 зловмисник під час Pump OFF Attack."
+    },
+    {
+      "id": "b2",
+      "type": "single",
+      "text": "Що станеться з water_level після вимкнення насоса (pump_status = 0)?",
+      "options": [
+        "water_level почне зростати",
+        "water_level залишиться незмінним",
+        "water_level починатиме знижуватися",
+        "water_level одразу стане 0"
+      ],
+      "correct_answers": [2],
+      "explanation": "Коли насос вимкнений, вода більше не подається в резервуар, тому water_level поступово знижується. PLC Simulator моделює цю фізичну залежність."
+    },
+    {
+      "id": "b3",
+      "type": "multi",
+      "text": "Які параметри належать до підсистеми Pump Station? (обери всі правильні)",
+      "options": [
+        "temperature",
+        "pressure",
+        "motor_speed",
+        "water_level",
+        "fan_status",
+        "pump_status"
+      ],
+      "correct_answers": [0, 1, 3, 5],
+      "explanation": "До Pump Station належать: temperature (R0), pressure (R1), water_level (R2), pump_status (R3). Параметри motor_speed і fan_status відносяться до Conveyor Line та Cooling System відповідно."
+    },
+    {
+      "id": "b4",
+      "type": "single",
+      "text": "Яка послідовність дій Blue Team при виявленні несанкціонованого вимкнення насоса?",
+      "options": [
+        "Вимкнути Grafana і перезапустити систему",
+        "Виявити аномалію → зафіксувати в журналі → виконати recovery → перевірити стан",
+        "Одразу виконати recovery без аналізу",
+        "Ігнорувати — насос сам увімкнеться"
+      ],
+      "correct_answers": [1],
+      "explanation": "Правильна послідовність: 1) Run Anomaly Detection — виявити проблему, 2) подія автоматично фіксується в журналі, 3) виконати Recovery для Pump Station, 4) перевірити що стан NORMAL відновлений."
+    },
+    {
+      "id": "b5",
+      "type": "multi",
+      "text": "Які твердження про Modbus Command Injection є правильними? (обери всі)",
+      "options": [
+        "Атака використовує незахищений протокол Modbus TCP",
+        "Modbus має вбудовану автентифікацію, яка блокує атаку",
+        "Зловмисник може змінити будь-який регістр PLC без пароля",
+        "Атака може вимкнути насос одним Modbus-запитом"
+      ],
+      "correct_answers": [0, 2, 3],
+      "explanation": "Modbus TCP — незахищений протокол без автентифікації. Будь-хто у мережі може читати і записувати регістри PLC. Саме тому ICS-мережі мають бути ізольовані від корпоративних і публічних мереж."
+    }
+  ]
 }

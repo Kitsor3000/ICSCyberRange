@@ -1,0 +1,126 @@
+{
+  "scenario_id": "advanced_coordinated_attack",
+  "title": "Advanced: Coordinated Multi-System APT",
+  "level": "Advanced",
+  "description": "Скоординована атака на всі три підсистеми одночасно (Advanced Persistent Threat). Зловмисник підміняє дані Pump Station, вимикає вентилятор охолодження та фальсифікує рівень води. Blue Team має виявити всі вектори атаки, пріоритизувати реагування та виконати повне відновлення.",
+  "goal": "Відпрацювати реагування на APT в ICS-середовищі: виявлення скоординованої атаки, пріоритизація recovery та генерація PDF-звіту про інцидент.",
+  "mitre_technique": {
+    "id": "T0836 / T0855",
+    "name": "Modify Parameter / Unauthorized Command Message"
+  },
+  "normal_state": {
+    "temperature": "18–45 °C",
+    "pump_status": "1 — насос увімкнений",
+    "fan_status": "1 — вентилятор охолодження увімкнений",
+    "coolant_temperature": "18–40 °C",
+    "water_level": "20–100 %",
+    "cooling_alarm": "0 — аварія відсутня"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "title": "Базовий стан: всі три системи в нормі",
+      "description": "Підтвердити нормальний стан: Pump Station (T: 28°C, P: 5 bar, Level: 60%), Conveyor Line (speed: 70%, current: 12A), Cooling System (fan: ON, coolant: 28°C, valve: 70%). Grafana — стабільні графіки."
+    },
+    {
+      "step": 2,
+      "title": "Вектор 1 — Pump False Data Injection",
+      "description": "Зловмисник записує temperature = 999 (R0) та pressure = 0 (R1). SCADA отримує хибні дані: критична температура і нульовий тиск. Оператори можуть прийняти неправильне рішення — зупинити насос через хибну тривогу."
+    },
+    {
+      "step": 3,
+      "title": "Вектор 2 — Fan Shutdown Attack",
+      "description": "Одночасно: fan_status = 0 (R8). Вентилятор зупиняється. PLC логіка: без вентилятора coolant_temperature починає зростати. Через кілька ітерацій coolant_temperature > 45°C → cooling_alarm = 1."
+    },
+    {
+      "step": 4,
+      "title": "Вектор 3 — Water Level Spoofing",
+      "description": "water_level = 0 (R2). SCADA показує порожній резервуар хоча фізично він повний. Автоматика може запустити аварійне наповнення або сигнал тривоги пустого резервуара."
+    },
+    {
+      "step": 5,
+      "title": "Blue Team: виявлення всіх аномалій",
+      "description": "Run Full Anomaly Detection. Система виявляє 5 аномалій: temperature = 999, pressure = 0, water_level = 0 (Pump Station), fan_status = 0, cooling_alarm = 1 (Cooling System). Всі фіксуються в журналі."
+    },
+    {
+      "step": 6,
+      "title": "Пріоритизація: спочатку Cooling System",
+      "description": "Cooling System має найвищий пріоритет: cooling_alarm = 1 означає активну аварію з ризиком фізичного пошкодження через перегрів. Recovery → Cooling System: fan_status = 1, coolant_temperature = 28, valve_position = 70, cooling_alarm = 0."
+    },
+    {
+      "step": 7,
+      "title": "Recovery Pump Station + генерація звіту",
+      "description": "Recovery → Pump Station: temperature = 28, pressure = 5, water_level = 60, pump_status = 1. Перевірити: стан NORMAL по всіх підсистемах. Blue Team → Generate PDF Incident Report для фіксації всього інциденту."
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "a1",
+      "type": "single",
+      "text": "Яка підсистема має найвищий пріоритет recovery при скоординованій атаці з cooling_alarm = 1?",
+      "options": [
+        "Pump Station — бо там найбільше аномалій (3 параметри)",
+        "Cooling System — бо активна аварія cooling_alarm = 1 несе ризик фізичного пошкодження",
+        "Conveyor Line — бо вона найважливіша для виробництва",
+        "Всі системи відновлювати одночасно"
+      ],
+      "correct_answers": [1],
+      "explanation": "Cooling System має пріоритет: cooling_alarm = 1 означає активний аварійний стан. Перегрів охолоджувача може призвести до фізичних пошкоджень обладнання. Кількість аномалій не визначає пріоритет — визначає ступінь ризику."
+    },
+    {
+      "id": "a2",
+      "type": "multi",
+      "text": "Які параметри Pump Station будуть аномальними після Pump False Data Injection? (обери всі)",
+      "options": [
+        "temperature = 999 (норма 18–45°C)",
+        "pressure = 0 (норма 2–10 bar)",
+        "pump_status = 0 (насос вимкнений)",
+        "water_level = 0 (норма 20–100%)"
+      ],
+      "correct_answers": [0, 1, 3],
+      "explanation": "Pump False Data Injection записує: temperature = 999 (R0) і pressure = 0 (R1). Water Level Spoofing записує water_level = 0 (R2) — це третій вектор тієї ж атаки. pump_status залишається 1 (насос працює, але отримує хибні дані від сенсорів)."
+    },
+    {
+      "id": "a3",
+      "type": "multi",
+      "text": "Які три вектори атаки використовуються в Advanced сценарії? (обери всі)",
+      "options": [
+        "Pump False Data Injection (R0, R1)",
+        "Fan Shutdown Attack (R8)",
+        "Emergency Stop Abuse (R7)",
+        "Water Level Spoofing (R2)",
+        "Motor Speed Overdrive (R5)"
+      ],
+      "correct_answers": [0, 1, 3],
+      "explanation": "Advanced сценарій: 1) Pump False Data Injection — підміна temperature і pressure, 2) Fan Shutdown Attack — вимкнення вентилятора, 3) Water Level Spoofing — підміна рівня води. Emergency Stop і Motor Speed Overdrive — це Intermediate сценарій."
+    },
+    {
+      "id": "a4",
+      "type": "single",
+      "text": "Чому False Data Injection небезпечніша за пряме вимкнення обладнання?",
+      "options": [
+        "Вона не небезпечніша — будь-яка атака однаково шкідлива",
+        "Оператори бачать хибні нормальні дані і не знають що сталося",
+        "Вона підміняє дані і при цьому не спрацьовують аварійні сигнали SCADA",
+        "Вона змушує операторів приймати неправильні рішення на основі хибних показників"
+      ],
+      "correct_answers": [2, 3],
+      "explanation": "False Data Injection — один з найнебезпечніших векторів: 1) SCADA-система не бачить аномалії в реальному стані (вентилятор вимкнений, але дані виглядають нормально), 2) оператори приймають рішення на основі хибних даних. Це може призвести до каскадних відмов."
+    },
+    {
+      "id": "a5",
+      "type": "multi",
+      "text": "Які дії входять до повного реагування на інцидент в ICS після скоординованої атаки? (обери всі)",
+      "options": [
+        "Run Full Anomaly Detection для виявлення всіх аномалій",
+        "Перевірити журнал подій для встановлення хронології",
+        "Відновити системи за пріоритетом ризику (спочатку активні аварії)",
+        "Видалити журнал подій після відновлення",
+        "Генерувати PDF Incident Report для документування інциденту",
+        "Перевірити Grafana для підтвердження повернення до норми"
+      ],
+      "correct_answers": [0, 1, 2, 4, 5],
+      "explanation": "Повне реагування на ICS-інцидент: виявлення → хронологія → відновлення за пріоритетом → документування → підтвердження. Журнал подій ніколи не видаляється — він є юридичним доказом і основою для аналізу вразливостей."
+    }
+  ]
+}

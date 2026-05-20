@@ -56,3 +56,11 @@ timestamp,event_type,description,temperature,pressure,water_level,pump_status,co
 2026-05-14 13:44:06,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,34,8,86,1,1,70,16,0,1,46,70,1
 2026-05-14 13:44:27,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,33,9,93,1,1,70,16,0,1,43,70,0
 2026-05-14 13:49:20,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,32,10,100,1,1,70,16,0,1,23,70,0
+2026-05-20 08:28:25,PUMP_OFF_ATTACK,Запущено атаку: Pump OFF Attack,32,7,90,0,1,70,15,0,1,23,70,0
+2026-05-20 08:29:41,ANOMALY_DETECTION,"Виявлено аномалії: Pump Station: pressure = 0, норма: 2 - 10; Pump Station: pump_status = 0, норма: 1 - 1",24,0,67,0,1,70,16,0,1,28,70,0
+2026-05-20 08:30:30,RECOVERY_EXECUTED,Виконано recovery: Pump Station,28,5,60,1,1,70,15,0,1,26,70,0
+2026-05-20 08:33:19,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,39,9,90,1,1,70,16,0,1,28,70,0
+2026-05-20 08:33:49,COOLING_TEMP_SPOOFING,Запущено атаку: Cooling Temperature Spoofing,36,9,96,1,1,70,15,0,1,29,70,0
+2026-05-20 08:34:20,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,36,8,100,1,1,70,17,0,1,28,70,0
+2026-05-20 08:35:27,CUSTOM_ATTACK,Запущено атаку: Custom Simple Attack,37,9,100,1,1,70,15,0,1,77,70,0
+2026-05-20 08:35:41,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,38,10,100,1,1,70,15,0,1,24,70,0
