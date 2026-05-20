@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import threading
 from pathlib import Path
 from html import escape
 
@@ -243,86 +244,6 @@ ATTACKS = [
 ]
 
 
-TRAINING_QUESTIONS = [
-    {
-        "system": "Pump Station",
-        "question": "Який Modbus register відповідає за стан насоса?",
-        "options": ["0", "1", "2", "3"],
-        "answer": "3",
-        "explanation": "Register 3 відповідає за pump_status. 1 — насос увімкнений, 0 — вимкнений.",
-    },
-    {
-        "system": "Pump Station",
-        "question": "Що станеться, якщо записати 0 у pump_status?",
-        "options": [
-            "Насос вимкнеться",
-            "Конвеєр прискориться",
-            "Охолодження увімкнеться",
-            "Тиск стане нормальним",
-        ],
-        "answer": "Насос вимкнеться",
-        "explanation": "pump_status = 0 означає примусове вимкнення насоса.",
-    },
-    {
-        "system": "Pump Station",
-        "question": "Який параметр показує рівень води?",
-        "options": ["pressure", "water_level", "motor_speed", "cooling_alarm"],
-        "answer": "water_level",
-        "explanation": "water_level показує рівень води в резервуарі насосної станції.",
-    },
-    {
-        "system": "Conveyor Line",
-        "question": "Який параметр відповідає за швидкість конвеєра?",
-        "options": ["motor_speed", "pressure", "fan_status", "valve_position"],
-        "answer": "motor_speed",
-        "explanation": "motor_speed показує швидкість двигуна конвеєра. Норма — 40–100%.",
-    },
-    {
-        "system": "Conveyor Line",
-        "question": "Що означає emergency_stop = 1?",
-        "options": [
-            "Аварійна зупинка активна",
-            "Конвеєр працює нормально",
-            "Насос вимкнений",
-            "Температура в нормі",
-        ],
-        "answer": "Аварійна зупинка активна",
-        "explanation": "emergency_stop = 1 означає, що аварійна зупинка конвеєра активна.",
-    },
-    {
-        "system": "Conveyor Line",
-        "question": "Який параметр показує струм двигуна?",
-        "options": ["motor_current", "water_level", "coolant_temperature", "pump_status"],
-        "answer": "motor_current",
-        "explanation": "motor_current показує струм двигуна конвеєра в амперах.",
-    },
-    {
-        "system": "Cooling System",
-        "question": "Який register відповідає за вентилятор охолодження?",
-        "options": ["8", "9", "10", "11"],
-        "answer": "8",
-        "explanation": "Register 8 — це fan_status. 1 — вентилятор ON, 0 — OFF.",
-    },
-    {
-        "system": "Cooling System",
-        "question": "Що означає cooling_alarm = 1?",
-        "options": [
-            "У системі охолодження аварія",
-            "Насос працює нормально",
-            "Конвеєр вимкнений",
-            "Тиск у нормі",
-        ],
-        "answer": "У системі охолодження аварія",
-        "explanation": "cooling_alarm = 1 означає аварійний стан системи охолодження.",
-    },
-    {
-        "system": "Cooling System",
-        "question": "Який параметр відповідає за положення клапана?",
-        "options": ["valve_position", "pressure", "motor_current", "water_level"],
-        "answer": "valve_position",
-        "explanation": "valve_position показує, наскільки відкритий клапан охолодження.",
-    },
-]
 
 
 # ------------------------------------------------
@@ -684,8 +605,6 @@ def render_attack_card(attack):
         ]
     )
 
-    duration_text = "Single write" if attack["duration"] == 0 else f"{attack['duration']} seconds"
-
     mitre_id = attack.get("mitre_id", "")
     mitre_name = attack.get("mitre_name", "")
     mitre_block = (
@@ -701,7 +620,7 @@ def render_attack_card(attack):
             <h3>{escape(attack['name'])}</h3>
             <p>{escape(attack['description'])}</p>
             <p>{writes_text}</p>
-            <p><b>Mode:</b> {duration_text}</p>
+            <p style="font-size:11px;color:#94a3b8;">Persistent — runs until Blue Team stops it</p>
             {mitre_block}
         </div>
         """,
@@ -781,57 +700,109 @@ def write_register(tag, value):
     return True, f"{tag} set to {value}"
 
 
-def run_repeated_write(writes, duration=10):
-    progress = st.progress(0)
-    status_box = st.empty()
+# ------------------------------------------------
+# PERSISTENT ATTACKS ENGINE
+# ------------------------------------------------
 
-    start_time = time.time()
+ACTIVE_ATTACKS_FILE = "data/active_attacks.json"
+_thread_lock = threading.Lock()
+_thread_started: list = []
 
-    while time.time() - start_time < duration:
-        for tag, value in writes:
-            write_register(tag, value)
 
-        current_state, _, error = read_plc_state()
+def load_active_attacks() -> dict:
+    try:
+        with open(ACTIVE_ATTACKS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
 
-        if error:
-            status_box.error(error)
-            break
 
-        status_box.warning("Attack in progress...")
+def save_active_attacks(attacks: dict) -> None:
+    try:
+        os.makedirs("data", exist_ok=True)
+        with open(ACTIVE_ATTACKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(attacks, f)
+    except OSError:
+        pass
 
-        elapsed = time.time() - start_time
-        progress.progress(min(int((elapsed / duration) * 100), 100))
 
+def arm_attack(event_name: str, writes: list) -> None:
+    attacks = load_active_attacks()
+    attacks[event_name] = {"writes": [[tag, value] for tag, value in writes]}
+    save_active_attacks(attacks)
+
+
+def disarm_attack(event_name: str) -> None:
+    attacks = load_active_attacks()
+    attacks.pop(event_name, None)
+    save_active_attacks(attacks)
+
+
+def disarm_system_attacks(system_tags: list) -> None:
+    attacks = load_active_attacks()
+    updated = {
+        name: data
+        for name, data in attacks.items()
+        if not any(w[0] in system_tags for w in data.get("writes", []))
+    }
+    save_active_attacks(updated)
+
+
+def disarm_tag_attacks(tag: str) -> None:
+    attacks = load_active_attacks()
+    updated = {
+        name: data
+        for name, data in attacks.items()
+        if not any(w[0] == tag for w in data.get("writes", []))
+    }
+    save_active_attacks(updated)
+
+
+def _persistent_attack_loop() -> None:
+    while True:
+        try:
+            attacks = load_active_attacks()
+            if attacks:
+                client, _ = get_client()
+                if client:
+                    for attack_data in attacks.values():
+                        for write_pair in attack_data.get("writes", []):
+                            tag, value = write_pair[0], write_pair[1]
+                            address = REGISTER_MAP.get(tag)
+                            if address is not None:
+                                client.write_register(address, int(value), unit=1)
+                    client.close()
+        except Exception:
+            pass
         time.sleep(1)
 
-    progress.progress(100)
+
+def _ensure_attack_thread() -> None:
+    with _thread_lock:
+        if not _thread_started:
+            t = threading.Thread(target=_persistent_attack_loop, daemon=True)
+            t.start()
+            _thread_started.append(True)
 
 
-def execute_attack(attack):
-    """
-    Запускає атаку.
-    Якщо duration = 0 — один запис у Modbus register.
-    Якщо duration > 0 — повторює запис кілька секунд.
-    """
+_ensure_attack_thread()
 
-    if attack["duration"] > 0:
-        run_repeated_write(attack["writes"], duration=attack["duration"])
-    else:
-        for tag, value in attack["writes"]:
-            ok, message = write_register(tag, value)
 
-            if not ok:
-                return False, message
+def execute_attack(attack: dict):
+    for tag, value in attack["writes"]:
+        ok, message = write_register(tag, value)
+        if not ok:
+            return False, message
+
+    arm_attack(attack["event"], attack["writes"])
 
     current_state, _, _ = read_plc_state()
-
     log_event(
         event_type=attack["event"],
         description=f"Запущено атаку: {attack['name']}",
         state=current_state
     )
-
-    return True, f"Attack executed: {attack['name']}"
+    return True, f"Attack launched: {attack['name']}"
 
 
 # ------------------------------------------------
@@ -877,6 +848,7 @@ def get_system_status(state):
 
 
 def recover_pump_station():
+    disarm_system_attacks(["temperature", "pressure", "water_level", "pump_status"])
     for tag in ["temperature", "pressure", "water_level", "pump_status"]:
         ok, message = write_register(tag, NORMAL_STATE[tag])
 
@@ -887,6 +859,7 @@ def recover_pump_station():
 
 
 def recover_conveyor_line():
+    disarm_system_attacks(["conveyor_status", "motor_speed", "motor_current", "emergency_stop"])
     for tag in ["conveyor_status", "motor_speed", "motor_current", "emergency_stop"]:
         ok, message = write_register(tag, NORMAL_STATE[tag])
 
@@ -897,6 +870,7 @@ def recover_conveyor_line():
 
 
 def recover_cooling_system():
+    disarm_system_attacks(["fan_status", "coolant_temperature", "valve_position", "cooling_alarm"])
     for tag in ["fan_status", "coolant_temperature", "valve_position", "cooling_alarm"]:
         ok, message = write_register(tag, NORMAL_STATE[tag])
 
@@ -1176,95 +1150,198 @@ elif page == "Red Team":
     )
 
     st.warning(
-        "Red Team тільки запускає атаки. Для аналізу і відновлення перейдіть у вкладку Blue Team."
+        "Red Team тільки запускає атаки. Вони тривають постійно до відновлення через Blue Team."
     )
 
-    selected_system = st.selectbox(
-        "Select target system",
-        list(SYSTEMS.keys())
-    )
+    # ── Active attacks banner ─────────────────────────────────────────
+    active_attacks = load_active_attacks()
 
-    system_attacks = [
-        attack for attack in ATTACKS
-        if attack["system"] == selected_system
-    ]
+    if active_attacks:
+        names_html = "".join(
+            f'<span style="display:inline-block;background:rgba(239,68,68,0.18);'
+            f'border:1px solid rgba(248,113,113,0.40);border-radius:8px;'
+            f'padding:2px 10px;margin:2px 4px 2px 0;font-size:12px;color:#fca5a5;">'
+            f'{escape(n)}</span>'
+            for n in active_attacks
+        )
+        st.markdown(
+            f"""
+            <div class="info-box" style="border-left:5px solid #ef4444;">
+                <b style="color:#fca5a5;">⚠ {len(active_attacks)} ACTIVE ATTACK(S)</b>
+                &nbsp;—&nbsp; Ці атаки зараз активні та тривають безперервно:<br>
+                <div style="margin-top:8px;">{names_html}</div>
+                <div style="margin-top:8px;font-size:12px;color:#94a3b8;">
+                Для зупинки: натисни «Stop» нижче або виконай Recovery у вкладці Blue Team.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.success("Немає активних атак. Всі системи в нормальному стані.")
+
+    st.divider()
+
+    # ── Prebuilt attacks ──────────────────────────────────────────────
+    selected_system = st.selectbox("Select target system", list(SYSTEMS.keys()))
+
+    system_attacks = [a for a in ATTACKS if a["system"] == selected_system]
 
     cols = st.columns(3)
 
     for index, attack in enumerate(system_attacks):
+        is_active = attack["event"] in active_attacks
+
         with cols[index]:
             render_attack_card(attack)
 
-            if st.button(f"Run: {attack['name']}", key=f"run_{attack['event']}"):
-                ok, message = execute_attack(attack)
-
-                if ok:
-                    st.error(message)
-                else:
-                    st.error(message)
+            if is_active:
+                st.markdown(
+                    '<div style="color:#f87171;font-size:12px;font-weight:700;'
+                    'margin-bottom:6px;">▶ АТАКА АКТИВНА</div>',
+                    unsafe_allow_html=True
+                )
+                if st.button(f"Stop: {attack['name']}", key=f"stop_{attack['event']}"):
+                    disarm_attack(attack["event"])
+                    for tag, _ in attack["writes"]:
+                        write_register(tag, NORMAL_STATE[tag])
+                    current_state, _, _ = read_plc_state()
+                    log_event(
+                        event_type="ATTACK_STOPPED",
+                        description=f"Атаку зупинено через Red Team: {attack['name']}",
+                        state=current_state
+                    )
+                    st.success(f"Атаку зупинено: {attack['name']}")
+                    st.rerun()
+            else:
+                if st.button(f"Launch: {attack['name']}", key=f"run_{attack['event']}"):
+                    ok, message = execute_attack(attack)
+                    if ok:
+                        st.warning(f"⚠️ {message}")
+                        st.rerun()
+                    else:
+                        st.error(f"Failed: {message}")
 
     st.divider()
 
-    st.subheader("Custom Simple Attack")
+    # ── Custom Attack ─────────────────────────────────────────────────
+    st.subheader("Custom Attack Builder")
 
-    st.markdown(
-        """
-        <div class="info-box">
-        Тут користувач може створити просту власну атаку:
-        вибрати параметр PLC, значення і тривалість запису.
-        Це працює тільки в навчальному середовищі ICSCyberRange.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    ATTACK_TYPE_TEMPLATES = {
+        "Parameter Override": {
+            "mitre_id": "T0836",
+            "mitre_name": "Modify Parameter",
+            "description": "Встановлює керуючий параметр на небезпечне значення (швидкість, позиція клапана).",
+            "value_hint": "Введи значення ВИЩЕ норми (перевантаження) або 0 (блокування).",
+            "suggested_value": lambda tag: NORMAL_RANGES[tag][1] + 20 if NORMAL_RANGES[tag][1] > 0 else 0,
+        },
+        "Sensor Data Spoofing": {
+            "mitre_id": "T0836",
+            "mitre_name": "Modify Parameter",
+            "description": "Підміняє показники сенсора на хибні критичні значення, щоб ввести SCADA в оману.",
+            "value_hint": "Введи критичне хибне значення (наприклад, 999 для температури, 0 для тиску).",
+            "suggested_value": lambda tag: 999 if "temperature" in tag else 0,
+        },
+        "Device Shutdown": {
+            "mitre_id": "T0855",
+            "mitre_name": "Unauthorized Command Message",
+            "description": "Вимикає обладнання несанкціонованим записом 0 у командний register.",
+            "value_hint": "Запиши 0 щоб вимкнути (1 = ON, 0 = OFF). Стосується status-параметрів.",
+            "suggested_value": lambda _: 0,
+        },
+        "Emergency Command Injection": {
+            "mitre_id": "T0855",
+            "mitre_name": "Unauthorized Command Message",
+            "description": "Активує аварійний стан PLC через несанкціонований запис командного register.",
+            "value_hint": "Запиши 1 для активації аварії (0 = normal, 1 = ACTIVE).",
+            "suggested_value": lambda _: 1,
+        },
+    }
 
-    custom_col1, custom_col2, custom_col3 = st.columns(3)
+    ca_col1, ca_col2 = st.columns([1, 2])
 
-    with custom_col1:
-        custom_tag = st.selectbox(
-            "Target parameter",
-            list(REGISTER_MAP.keys())
+    with ca_col1:
+        ca_type = st.selectbox("Attack type", list(ATTACK_TYPE_TEMPLATES.keys()), key="ca_type")
+        ca_system = st.selectbox("Target system", list(SYSTEMS.keys()), key="ca_system")
+
+        ca_tags = SYSTEMS[ca_system]["tags"]
+        ca_tag = st.selectbox("Target parameter", ca_tags, key="ca_tag")
+
+        ca_tpl = ATTACK_TYPE_TEMPLATES[ca_type]
+        ca_norm_min, ca_norm_max = NORMAL_RANGES[ca_tag]
+        ca_suggested = ca_tpl["suggested_value"](ca_tag)
+
+        st.caption(
+            f"Register R{REGISTER_MAP[ca_tag]}  ·  "
+            f"Normal range: {ca_norm_min} – {ca_norm_max}"
         )
+        st.caption(f"💡 {ca_tpl['value_hint']}")
 
-    with custom_col2:
-        custom_value = st.number_input(
+        ca_value = st.number_input(
             "Value to write",
             min_value=0,
             max_value=999,
-            value=0,
-            step=1
+            value=int(ca_suggested),
+            step=1,
+            key="ca_value"
         )
 
-    with custom_col3:
-        custom_duration = st.slider(
-            "Duration, seconds",
-            min_value=0,
-            max_value=20,
-            value=0
+    with ca_col2:
+        st.markdown(
+            f"""
+            <div class="attack-card danger" style="height:100%;box-sizing:border-box;">
+                <span class="attack-level">Custom · {escape(ca_type)}</span>
+                <h3>Custom: {escape(ca_tag)} → {ca_value}</h3>
+                <p>{escape(ca_tpl['description'])}</p>
+                <p>R{REGISTER_MAP[ca_tag]}: <b>{escape(ca_tag)}</b> → <b>{ca_value}</b></p>
+                <p style="font-size:11px;color:#94a3b8;margin-top:8px;">
+                    MITRE ATT&amp;CK ICS: <b>{escape(ca_tpl['mitre_id'])}</b>
+                    — {escape(ca_tpl['mitre_name'])}
+                </p>
+                <p style="font-size:11px;color:#94a3b8;">
+                    System: <b>{escape(ca_system)}</b> · Persistent until stopped
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
-    custom_description = st.text_input(
-        "Custom attack description",
-        value=f"Custom attack on {custom_tag}"
-    )
+    custom_event = f"CUSTOM_ATTACK_{ca_tag.upper()}"
+    ca_is_active = custom_event in active_attacks
 
-    if st.button("Run Custom Attack"):
-        custom_attack = {
-            "system": SYSTEM_BY_TAG[custom_tag],
-            "name": "Custom Simple Attack",
-            "level": "Custom",
-            "event": "CUSTOM_ATTACK",
-            "description": custom_description,
-            "writes": [(custom_tag, int(custom_value))],
-            "duration": int(custom_duration),
-        }
-
-        ok, message = execute_attack(custom_attack)
-
-        if ok:
-            st.error(message)
+    btn_c1, btn_c2 = st.columns(2)
+    with btn_c1:
+        if ca_is_active:
+            st.markdown(
+                '<div style="color:#f87171;font-size:12px;font-weight:700;margin-bottom:6px;">'
+                '▶ КАСТОМНА АТАКА АКТИВНА</div>',
+                unsafe_allow_html=True
+            )
+            if st.button("Stop Custom Attack", key="stop_custom"):
+                disarm_attack(custom_event)
+                write_register(ca_tag, NORMAL_STATE[ca_tag])
+                current_state, _, _ = read_plc_state()
+                log_event("ATTACK_STOPPED", f"Кастомну атаку зупинено: {ca_tag}", current_state)
+                st.success(f"Атаку зупинено: {ca_tag}")
+                st.rerun()
         else:
-            st.error(message)
+            if st.button("Launch Custom Attack", key="launch_custom"):
+                custom_attack = {
+                    "system": ca_system,
+                    "name": f"Custom: {ca_tag} → {ca_value}",
+                    "level": "Custom",
+                    "event": custom_event,
+                    "description": ca_tpl["description"],
+                    "writes": [(ca_tag, int(ca_value))],
+                    "mitre_id": ca_tpl["mitre_id"],
+                    "mitre_name": ca_tpl["mitre_name"],
+                }
+                ok, message = execute_attack(custom_attack)
+                if ok:
+                    st.warning(f"⚠️ {message}")
+                    st.rerun()
+                else:
+                    st.error(f"Failed: {message}")
 
 
 # ------------------------------------------------
@@ -1393,12 +1470,136 @@ elif page == "Blue Team":
 
         st.divider()
 
-        st.subheader("Custom Simple Defense Rule")
+        # ── Active attacks status ─────────────────────────────────────
+        bt_active = load_active_attacks()
+        if bt_active:
+            st.markdown(
+                f'<div class="info-box" style="border-left:5px solid #ef4444;">'
+                f'<b style="color:#fca5a5;">⚠ {len(bt_active)} активних атак зараз:</b><br>'
+                + "".join(
+                    f'<span style="display:inline-block;background:rgba(239,68,68,0.15);'
+                    f'border:1px solid rgba(248,113,113,0.35);border-radius:6px;'
+                    f'padding:1px 8px;margin:2px 4px 2px 0;font-size:12px;color:#fca5a5;">'
+                    f'{escape(n)}</span>'
+                    for n in bt_active
+                )
+                + "</div>",
+                unsafe_allow_html=True
+            )
+
+        st.divider()
+
+        # ── Custom Parameter Recovery ─────────────────────────────────
+        st.subheader("Custom Parameter Recovery")
 
         st.markdown(
             """
             <div class="info-box">
-            Тут користувач може створити просте правило захисту:
+            Точкове відновлення: вибери конкретний параметр PLC,
+            встанови безпечне значення і запиши його в register.
+            Автоматично зупиняє будь-яку активну атаку на цей параметр.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        cr_col1, cr_col2 = st.columns([1, 2])
+
+        with cr_col1:
+            cr_system = st.selectbox(
+                "Subsystem",
+                list(SYSTEMS.keys()),
+                key="cr_system"
+            )
+            cr_tags = SYSTEMS[cr_system]["tags"]
+            cr_tag = st.selectbox(
+                "Parameter to recover",
+                cr_tags,
+                key="cr_tag"
+            )
+
+            cr_norm_min, cr_norm_max = NORMAL_RANGES[cr_tag]
+            cr_normal_val = NORMAL_STATE[cr_tag]
+            cr_reg = REGISTER_MAP[cr_tag]
+
+            st.caption(
+                f"Register R{cr_reg}  ·  Normal range: {cr_norm_min} – {cr_norm_max}  ·  "
+                f"Default: {cr_normal_val}"
+            )
+
+            cr_value = st.number_input(
+                "Recovery value",
+                min_value=0,
+                max_value=999,
+                value=int(cr_normal_val),
+                step=1,
+                key="cr_value"
+            )
+
+        with cr_col2:
+            cr_current_state, _, _ = read_plc_state()
+            cr_current_val = cr_current_state[cr_tag] if cr_current_state else "N/A"
+            cr_in_normal = (
+                cr_norm_min <= cr_current_val <= cr_norm_max
+                if isinstance(cr_current_val, int) else False
+            )
+            cr_status_color = "#22c55e" if cr_in_normal else "#ef4444"
+            cr_status_label = "NORMAL" if cr_in_normal else "OUT OF RANGE"
+
+            cr_tag_attacked = any(
+                cr_tag in [w[0] for w in d.get("writes", [])]
+                for d in bt_active.values()
+            )
+
+            st.markdown(
+                f"""
+                <div class="system-card" style="border-left:5px solid {cr_status_color};">
+                    <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;
+                                letter-spacing:.06em;margin-bottom:8px;">
+                        {escape(cr_system)} · R{cr_reg} · {escape(cr_tag)}
+                    </div>
+                    <div style="font-size:28px;font-weight:900;color:{cr_status_color};">
+                        {cr_current_val}
+                    </div>
+                    <div style="font-size:12px;color:{cr_status_color};margin-top:4px;">
+                        {cr_status_label} &nbsp;·&nbsp; нормa: {cr_norm_min} – {cr_norm_max}
+                    </div>
+                    {'<div style="font-size:12px;color:#fca5a5;margin-top:8px;">⚠ Параметр під атакою</div>'
+                     if cr_tag_attacked else ''}
+                    <div style="font-size:12px;color:#94a3b8;margin-top:8px;">
+                        Відновити до: <b style="color:#f8fafc;">{cr_value}</b>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        if st.button("Apply Custom Recovery", key="apply_cr"):
+            disarm_tag_attacks(cr_tag)
+            ok, message = write_register(cr_tag, cr_value)
+            cr_state_after, _, _ = read_plc_state()
+
+            if ok:
+                log_event(
+                    event_type="CUSTOM_RECOVERY",
+                    description=(
+                        f"Custom recovery: {cr_tag} → {cr_value} "
+                        f"(попереднє: {cr_current_val})"
+                    ),
+                    state=cr_state_after
+                )
+                st.success(f"Відновлено: {cr_tag} = {cr_value}")
+            else:
+                st.error(message)
+
+        st.divider()
+
+        st.subheader("Custom Anomaly Detection Rule")
+
+        st.markdown(
+            """
+            <div class="info-box">
+            Тут користувач може створити власне правило захисту:
             вибрати параметр, мінімальне і максимальне нормальне значення.
             </div>
             """,
@@ -1414,25 +1615,32 @@ elif page == "Blue Team":
                 key="custom_defense_tag"
             )
 
+        known_min, known_max = NORMAL_RANGES[defense_tag]
+
         with defense_col2:
             defense_min = st.number_input(
-                "Min normal value",
+                f"Min normal value (known: {known_min})",
                 min_value=0,
                 max_value=999,
-                value=0,
+                value=known_min,
                 step=1
             )
 
         with defense_col3:
             defense_max = st.number_input(
-                "Max normal value",
+                f"Max normal value (known: {known_max})",
                 min_value=0,
                 max_value=999,
-                value=100,
+                value=known_max,
                 step=1
             )
 
-        if st.button("Run Custom Defense Check"):
+        if defense_min > defense_max:
+            st.warning(
+                f"Min ({defense_min}) більший за Max ({defense_max}) — правило некоректне. "
+                f"Встанови Min < Max."
+            )
+        elif st.button("Run Custom Anomaly Check"):
             current_state, _, current_error = read_plc_state()
 
             if current_error:
@@ -1442,8 +1650,8 @@ elif page == "Blue Team":
 
                 if current_value < defense_min or current_value > defense_max:
                     st.error(
-                        f"Custom rule alert: {defense_tag} = {current_value}, "
-                        f"норма: {defense_min} - {defense_max}"
+                        f"ALERT: {defense_tag} = {current_value} "
+                        f"(норма: {defense_min} – {defense_max})"
                     )
 
                     log_event(
@@ -1456,7 +1664,8 @@ elif page == "Blue Team":
                     )
                 else:
                     st.success(
-                        f"Custom rule passed: {defense_tag} = {current_value}"
+                        f"OK: {defense_tag} = {current_value} "
+                        f"(в нормі: {defense_min} – {defense_max})"
                     )
 
         st.divider()
