@@ -128,3 +128,24 @@ timestamp,event_type,description,temperature,pressure,water_level,pump_status,co
 2026-05-20 09:11:31,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,33,8,100,1,1,80,19,0,1,74,70,1
 2026-05-20 09:13:27,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,31,9,100,1,1,80,18,0,1,48,70,1
 2026-05-20 09:14:11,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,30,7,100,1,1,80,19,0,1,37,70,0
+2026-05-20 12:33:28,WATER_LEVEL_SPOOFING,Запущено атаку: Water Level Spoofing,37,8,0,1,1,70,16,0,1,26,70,0
+2026-05-20 12:33:29,PUMP_FALSE_DATA_INJECTION,Запущено атаку: Pump False Data Injection,999,0,0,1,1,70,17,0,1,26,70,0
+2026-05-20 12:33:33,CONVEYOR_STOP_ATTACK,Запущено атаку: Conveyor Stop Attack,999,0,0,1,0,70,16,0,1,26,70,0
+2026-05-20 12:33:34,MOTOR_SPEED_OVERDRIVE,Запущено атаку: Motor Speed Overdrive,999,0,0,1,0,120,16,0,1,26,70,0
+2026-05-20 12:33:38,ANOMALY_DETECTION,"Виявлено аномалії: Pump Station: temperature = 999, норма: 18 - 45; Pump Station: pressure = 0, норма: 2 - 10; Pump Station: water_level = 0, норма: 20 - 100; Conveyor Line: conveyor_status = 0, норма: 1 - 1; Conveyor Line: motor_speed = 120, норма: 40 - 100; Conveyor Line: motor_current = 0, норма: 5 - 25",999,0,0,1,0,120,0,0,1,27,70,0
+2026-05-20 12:42:35,RECOVERY_EXECUTED,Виконано recovery: Full System,28,5,60,1,1,70,12,0,1,28,70,0
+2026-05-26 12:30:31,PUMP_FALSE_DATA_INJECTION,Запущено атаку: Pump False Data Injection,999,0,100,1,1,70,16,0,1,24,70,0
+2026-05-26 12:30:43,ANOMALY_DETECTION,"Виявлено аномалії: Pump Station: temperature = 999, норма: 18 - 45; Pump Station: pressure = 0, норма: 2 - 10",999,0,100,1,1,70,17,0,1,23,70,0
+2026-05-26 12:31:20,CUSTOM_RECOVERY,Custom recovery: temperature → 35 (попереднє: 999),35,0,100,1,1,70,17,0,1,29,70,0
+2026-06-09 09:39:04,PUMP_OFF_ATTACK,Запущено атаку: Pump OFF Attack,36,9,100,0,1,70,17,0,1,26,70,0
+2026-06-09 10:13:27,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,26,0,54,0,1,70,16,0,1,28,70,0
+2026-06-09 10:13:28,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,26,0,54,0,1,70,16,0,1,28,70,0
+2026-06-09 10:13:28,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,25,0,53,0,1,70,17,0,1,29,70,0
+2026-06-09 10:13:30,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,25,0,53,0,1,70,17,0,1,29,70,0
+2026-06-09 10:13:46,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,24,0,47,0,1,70,16,0,1,28,70,0
+2026-06-09 10:13:47,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,24,0,47,0,1,70,16,0,1,28,70,0
+2026-06-09 10:13:47,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,24,0,47,0,1,70,16,0,1,28,70,0
+2026-06-09 10:14:08,ANOMALY_DETECTION,"Виявлено аномалії: Pump Station: pressure = 0, норма: 2 - 10; Pump Station: pump_status = 0, норма: 1 - 1",24,0,41,0,1,70,15,0,1,25,70,0
+2026-06-09 10:14:09,RECOVERY_EXECUTED,Виконано recovery: Full System,28,5,60,1,1,70,12,0,1,28,70,0
+2026-06-09 10:14:13,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,24,2,42,1,1,70,15,0,1,26,70,0
+2026-06-09 10:14:13,PLC_STATUS_READ,Користувач оновив стан PLC на сторінці Systems,24,2,42,1,1,70,15,0,1,26,70,0

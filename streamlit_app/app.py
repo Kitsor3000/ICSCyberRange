@@ -256,287 +256,350 @@ st.set_page_config(
     layout="wide"
 )
 
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
 
 # ------------------------------------------------
 # DESIGN
 # ------------------------------------------------
 
+_DARK_CSS = """
+/* ═══════════════ DARK THEME ════════════════
+   App bg   #0d1117   Card bg  #161b22
+   Text     #e6edf3   Muted    #8d96a0
+   Border   #30363d   Accent   #58a6ff
+   Code bg  #1c2128   Code txt #79c0ff
+   ════════════════════════════════════════ */
+.stApp {
+    background: linear-gradient(160deg, #0d1117 0%, #161b22 100%);
+    color: #e6edf3;
+}
+.block-container { padding-top: 1.4rem; padding-bottom: 2rem; max-width: 1400px; }
+h1, h2, h3 { color: #e6edf3 !important; letter-spacing: -0.03em; }
+h4, h5, h6 { color: #cdd9e5 !important; }
+p, span, label, div { color: #e6edf3; }
+a { color: #58a6ff !important; } a:hover { color: #79c0ff !important; }
+
+/* code & pre — critical for readability */
+code { color: #79c0ff !important; background: #1c2128 !important; border-radius: 6px; padding: 2px 7px; border: 1px solid #30363d; font-size: 0.88em; }
+pre { background: #1c2128 !important; border: 1px solid #30363d !important; border-radius: 10px; padding: 16px !important; }
+pre code { background: transparent !important; border: none !important; }
+pre * { color: #cdd9e5 !important; }
+
+/* sidebar */
+section[data-testid="stSidebar"] { background: #0d1117 !important; border-right: 1px solid #30363d !important; }
+section[data-testid="stSidebar"] * { color: #e6edf3 !important; }
+section[data-testid="stSidebar"] hr { border-color: #30363d !important; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color: #8d96a0 !important; }
+
+/* custom cards */
+.main-header { padding: 24px 28px; border-radius: 16px; background: linear-gradient(135deg, rgba(56,189,248,0.12), rgba(99,102,241,0.08)), #161b22; border: 1px solid rgba(56,189,248,0.22); margin-bottom: 22px; box-shadow: 0 8px 32px rgba(0,0,0,0.40); }
+.main-header h1 { margin-bottom: 8px; font-size: 36px; font-weight: 850; color: #e6edf3 !important; }
+.main-header p { color: #8d96a0 !important; font-size: 16px; margin: 0; max-width: 980px; }
+.red-header { background: linear-gradient(135deg, rgba(220,38,38,0.20), rgba(127,29,29,0.12)), #161b22; border: 1px solid rgba(248,113,113,0.30) !important; }
+.blue-header { background: linear-gradient(135deg, rgba(37,99,235,0.20), rgba(30,64,175,0.12)), #161b22; border: 1px solid rgba(96,165,250,0.30) !important; }
+.purple-header { background: linear-gradient(135deg, rgba(124,58,237,0.20), rgba(88,28,135,0.12)), #161b22; border: 1px solid rgba(167,139,250,0.30) !important; }
+
+.system-card, .metric-card, .attack-card, .info-box, .log-box { padding: 18px; border-radius: 14px; background: #161b22; border: 1px solid #30363d; box-shadow: 0 4px 16px rgba(0,0,0,0.35); margin-bottom: 16px; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s; }
+.system-card:hover, .metric-card:hover, .attack-card:hover, .info-box:hover { transform: translateY(-2px); border-color: #58a6ff; box-shadow: 0 8px 28px rgba(0,0,0,0.50); }
+
+/* log-box: monospace dark bg, light text */
+.log-box { background: #1c2128 !important; font-family: 'Consolas','Courier New',monospace !important; }
+.log-box p, .log-box span, .log-box div, .log-box pre { color: #cdd9e5 !important; background: transparent !important; }
+.log-box code { color: #79c0ff !important; background: rgba(255,255,255,0.06) !important; }
+
+.metric-label { color: #8d96a0 !important; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+.metric-value { color: #e6edf3 !important; font-size: 30px; font-weight: 850; line-height: 1.15; word-break: break-word; }
+.metric-sub { color: #8d96a0 !important; font-size: 12px; margin-top: 8px; }
+
+.normal { border-left: 5px solid #3fb950; }
+.warning { border-left: 5px solid #d29922; }
+.danger { border-left: 5px solid #f85149; }
+.pump { border-left: 5px solid #79c0ff; }
+.conveyor { border-left: 5px solid #ffa657; }
+.cooling { border-left: 5px solid #bc8cff; }
+
+.status-card { padding: 20px; border-radius: 14px; background: #161b22; border: 1px solid #30363d; box-shadow: 0 4px 16px rgba(0,0,0,0.35); margin-bottom: 18px; }
+.status-title { font-size: 12px; color: #8d96a0 !important; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+.status-value { font-size: 28px; font-weight: 850; color: #e6edf3 !important; }
+.attack-level { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: #1c2128; border: 1px solid #30363d; color: #8d96a0 !important; margin-bottom: 10px; }
+
+div.stButton > button { width: 100%; border-radius: 10px; min-height: 44px; font-weight: 700; border: 1px solid #30363d; background: #21262d; color: #e6edf3; transition: all 0.15s; }
+div.stButton > button:hover { border-color: #58a6ff; background: rgba(88,166,255,0.12); color: #79c0ff; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+div.stDownloadButton > button { width: 100%; border-radius: 10px; min-height: 44px; font-weight: 700; }
+
+/* alerts */
+div.stInfo { background: rgba(56,139,253,0.10) !important; border-left: 4px solid #388bfd !important; border-radius: 8px; }
+div.stInfo * { color: #79c0ff !important; }
+div.stWarning { background: rgba(187,128,9,0.12) !important; border-left: 4px solid #d29922 !important; border-radius: 8px; }
+div.stWarning * { color: #e3b341 !important; }
+div.stError { background: rgba(248,81,73,0.10) !important; border-left: 4px solid #f85149 !important; border-radius: 8px; }
+div.stError * { color: #ff7b72 !important; }
+div.stSuccess { background: rgba(63,185,80,0.10) !important; border-left: 4px solid #3fb950 !important; border-radius: 8px; }
+div.stSuccess * { color: #56d364 !important; }
+
+/* caption / hr */
+[data-testid="stCaptionContainer"] p { color: #8d96a0 !important; }
+hr { border-color: #30363d !important; }
+[data-testid="stMetricLabel"] * { color: #8d96a0 !important; }
+[data-testid="stMetricValue"] * { color: #e6edf3 !important; }
+
+.mobile-nav-label { display: none; }
+@media (max-width: 768px) {
+    .mobile-nav-label { display: block; margin-bottom: -10px; color: #8d96a0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 1rem; }
+    .main-header { padding: 18px 16px; border-radius: 14px; }
+    .main-header h1 { font-size: 24px; line-height: 1.18; }
+    .main-header p { font-size: 14px; line-height: 1.5; }
+    .metric-card, .system-card, .attack-card, .info-box, .log-box { padding: 14px; border-radius: 12px; }
+    .metric-value { font-size: 25px; }
+    .status-value { font-size: 23px; }
+    div.stButton > button { min-height: 48px; font-size: 15px; }
+}
+"""
+
+_LIGHT_CSS = """
+/* ═══════════════════════════════════════════
+   LIGHT THEME  —  Palette:
+   bg        #f0f5ff → #f8fafc
+   cards     #ffffff
+   sidebar   #eef2ff → #f1f5f9
+   text-1    #0f172a   text-2  #475569   muted  #94a3b8
+   border    #e2e8f0   accent  #3b82f6
+   ═══════════════════════════════════════════ */
+
+/* ── App root ─────────────────────────────── */
+.stApp { background: linear-gradient(135deg, #f0f5ff 0%, #f8fafc 50%, #f0f9ff 100%); color: #0f172a; }
+.block-container { padding-top: 1.4rem; padding-bottom: 2rem; max-width: 1400px; }
+
+/* ── Top toolbar / header bar ─────────────── */
+[data-testid="stHeader"], header[data-testid="stHeader"] {
+    background: rgba(240, 245, 255, 0.97) !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    backdrop-filter: blur(8px);
+}
+[data-testid="stHeader"] * { color: #475569 !important; fill: #475569 !important; }
+[data-testid="stHeader"] button { background: transparent !important; border: none !important; }
+[data-testid="stHeader"] button:hover { background: #e2e8f0 !important; }
+[data-testid="stToolbar"] { background: rgba(240, 245, 255, 0.97) !important; }
+
+/* ── Headings & text ──────────────────────── */
+h1, h2, h3 { color: #0f172a !important; letter-spacing: -0.03em; }
+h4, h5, h6 { color: #1e293b !important; }
+p { color: #334155 !important; }
+span { color: #334155; }
+label { color: #475569 !important; }
+a { color: #3b82f6 !important; }
+a:hover { color: #2563eb !important; }
+
+/* ── Code ─────────────────────────────────── */
+code { color: #1d4ed8 !important; background: rgba(219, 234, 254, 0.80) !important; border-radius: 6px; padding: 2px 6px; }
+pre { background: #f1f5f9 !important; border: 1px solid #e2e8f0; border-radius: 8px; }
+pre * { color: #1e293b !important; }
+
+/* ── Sidebar ──────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #eef2ff 0%, #f1f5f9 100%) !important;
+    border-right: 1px solid #e2e8f0 !important;
+}
+section[data-testid="stSidebar"] * { color: #1e293b !important; }
+section[data-testid="stSidebar"] hr { border-color: #cbd5e1 !important; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color: #64748b !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] * { color: #334155 !important; }
+
+/* ── Sidebar navigation radio ─────────────── */
+[data-testid="stSidebar"] .stRadio > label { color: #475569 !important; }
+[data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p { color: #1e293b !important; }
+[data-testid="stSidebar"] .stRadio label div p { color: #1e293b !important; }
+
+/* ── Markdown containers ──────────────────── */
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 { color: #1e293b !important; }
+[data-testid="stCaptionContainer"] p { color: #64748b !important; }
+
+/* ── Input / Textarea ─────────────────────── */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stTextArea > div > div > textarea {
+    background: #ffffff !important; color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important; border-radius: 8px;
+}
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12) !important;
+}
+[data-baseweb="input"] { background: #ffffff !important; }
+[data-baseweb="input"] input { color: #0f172a !important; background: #ffffff !important; }
+
+/* ── Selectbox ────────────────────────────── */
+.stSelectbox > div > div,
+[data-testid="stSelectbox"] > div > div { background: #ffffff !important; color: #0f172a !important; border: 1px solid #cbd5e1 !important; border-radius: 8px; }
+[data-testid="stSelectbox"] * { color: #0f172a !important; }
+[data-baseweb="select"] { background: #ffffff !important; }
+[data-baseweb="select"] * { color: #0f172a !important; background: #ffffff !important; }
+[data-baseweb="select"] > div { background: #ffffff !important; border-color: #cbd5e1 !important; }
+
+/* Dropdown popover list */
+[data-baseweb="popover"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 10px; box-shadow: 0 8px 24px rgba(15,23,42,0.10) !important; }
+[data-baseweb="popover"] * { color: #0f172a !important; background: #ffffff !important; }
+[data-baseweb="popover"] li:hover, [data-baseweb="menu"] li:hover { background: #eff6ff !important; }
+[data-baseweb="menu"] { background: #ffffff !important; }
+[data-baseweb="menu"] * { color: #0f172a !important; }
+
+/* ── Radio buttons ────────────────────────── */
+.stRadio > label { color: #475569 !important; }
+.stRadio [data-testid="stMarkdownContainer"] p { color: #334155 !important; }
+.stRadio label { color: #334155 !important; }
+
+/* ── Checkbox ─────────────────────────────── */
+.stCheckbox label { color: #334155 !important; }
+
+/* ── Native Streamlit alerts ──────────────── */
+[data-testid="stNotification"],
+[data-baseweb="notification"] { border-radius: 10px !important; }
+
+div[data-testid="stAlert"] { border-radius: 10px !important; }
+
+/* info */
+div.stInfo, [data-testid="stAlertContainer"].st-info,
+[data-baseweb="notification"].st-info { background: #eff6ff !important; border-left: 4px solid #3b82f6 !important; }
+div.stInfo *, [data-baseweb="notification"].st-info * { color: #1e40af !important; }
+
+/* warning */
+div.stWarning, [data-testid="stAlertContainer"].st-warning { background: #fffbeb !important; border-left: 4px solid #f59e0b !important; }
+div.stWarning * { color: #92400e !important; }
+
+/* error */
+div.stError, [data-testid="stAlertContainer"].st-error { background: #fef2f2 !important; border-left: 4px solid #ef4444 !important; }
+div.stError * { color: #991b1b !important; }
+
+/* success */
+div.stSuccess, [data-testid="stAlertContainer"].st-success { background: #f0fdf4 !important; border-left: 4px solid #22c55e !important; }
+div.stSuccess * { color: #166534 !important; }
+
+/* sidebar alerts */
+[data-testid="stSidebar"] div.stSuccess { background: #f0fdf4 !important; }
+[data-testid="stSidebar"] div.stSuccess * { color: #166534 !important; }
+[data-testid="stSidebar"] div.stError { background: #fef2f2 !important; }
+[data-testid="stSidebar"] div.stError * { color: #991b1b !important; }
+
+/* ── Dividers ─────────────────────────────── */
+hr { border-color: #e2e8f0 !important; }
+
+/* ── Expander ─────────────────────────────── */
+[data-testid="stExpander"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; }
+.streamlit-expanderHeader { background: #f8fafc !important; border-radius: 12px; }
+.streamlit-expanderHeader *, [data-testid="stExpander"] * { color: #1e293b !important; }
+[data-testid="stExpanderToggleIcon"] { color: #64748b !important; fill: #64748b !important; }
+
+/* ── Metrics (native st.metric) ───────────── */
+[data-testid="stMetric"] { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+[data-testid="stMetricLabel"] * { color: #64748b !important; }
+[data-testid="stMetricValue"] * { color: #0f172a !important; }
+[data-testid="stMetricDelta"] * { color: #16a34a !important; }
+
+/* ── Dataframe / table ────────────────────── */
+[data-testid="stDataFrame"] { background: #ffffff !important; border-radius: 10px; border: 1px solid #e2e8f0; }
+[data-testid="stDataFrame"] * { color: #0f172a !important; background: #ffffff !important; }
+
+/* ── Tabs ─────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] { background: #f1f5f9; border-radius: 10px; padding: 4px; }
+.stTabs [data-baseweb="tab"] { color: #64748b !important; border-radius: 8px; }
+.stTabs [aria-selected="true"] { background: #ffffff !important; color: #0f172a !important; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+/* ── Spinner ──────────────────────────────── */
+[data-testid="stSpinner"] * { color: #3b82f6 !important; }
+
+/* ── Tooltip ──────────────────────────────── */
+[data-baseweb="tooltip"] { background: #1e293b !important; color: #f8fafc !important; border-radius: 6px; }
+[data-baseweb="tooltip"] * { color: #f8fafc !important; }
+
+/* ══ Custom card components ═══════════════════════════════════════════ */
+.main-header { padding: 24px 28px; border-radius: 22px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.09), rgba(14, 165, 233, 0.04)), #ffffff; border: 1px solid rgba(59, 130, 246, 0.20); margin-bottom: 22px; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.07); }
+.main-header h1 { margin-bottom: 8px; font-size: 36px; font-weight: 850; color: #0f172a !important; }
+.main-header p { color: #475569 !important; font-size: 16px; margin: 0; max-width: 980px; }
+
+.red-header { background: linear-gradient(135deg, rgba(220, 38, 38, 0.09), rgba(127, 29, 29, 0.04)), #ffffff; border: 1px solid rgba(220, 38, 38, 0.22) !important; }
+.blue-header { background: linear-gradient(135deg, rgba(37, 99, 235, 0.09), rgba(30, 64, 175, 0.04)), #ffffff; border: 1px solid rgba(37, 99, 235, 0.22) !important; }
+.purple-header { background: linear-gradient(135deg, rgba(124, 58, 237, 0.09), rgba(88, 28, 135, 0.04)), #ffffff; border: 1px solid rgba(124, 58, 237, 0.22) !important; }
+
+.system-card, .metric-card, .attack-card, .info-box, .log-box { padding: 18px; border-radius: 18px; background: #ffffff; border: 1px solid #e8edf4; box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05); margin-bottom: 16px; transition: transform 0.18s ease, border 0.18s ease, box-shadow 0.18s ease; }
+.system-card:hover, .metric-card:hover, .attack-card:hover, .info-box:hover { transform: translateY(-3px); border: 1px solid rgba(59, 130, 246, 0.40); box-shadow: 0 8px 24px rgba(59, 130, 246, 0.10); }
+
+.metric-label { color: #64748b; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+.metric-value { color: #0f172a; font-size: 30px; font-weight: 850; line-height: 1.15; word-break: break-word; }
+.metric-sub { color: #94a3b8; font-size: 12px; margin-top: 8px; }
+
+.normal { border-left: 5px solid #22c55e; }
+.warning { border-left: 5px solid #f59e0b; }
+.danger { border-left: 5px solid #ef4444; }
+.pump { border-left: 5px solid #0ea5e9; }
+.conveyor { border-left: 5px solid #f97316; }
+.cooling { border-left: 5px solid #8b5cf6; }
+
+.status-card { padding: 20px; border-radius: 18px; background: #ffffff; border: 1px solid #e8edf4; box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05); margin-bottom: 18px; }
+.status-title { font-size: 12px; color: #64748b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+.status-value { font-size: 28px; font-weight: 850; color: #0f172a; }
+
+.attack-level { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; margin-bottom: 10px; }
+
+div.stButton > button { width: 100%; border-radius: 12px; min-height: 46px; font-weight: 750; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; transition: all 0.15s ease; }
+div.stButton > button:hover { border: 1px solid #3b82f6; background: #eff6ff; color: #1d4ed8; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.14); }
+div.stDownloadButton > button { width: 100%; border-radius: 12px; min-height: 46px; font-weight: 750; background: #ffffff !important; color: #1e293b !important; border: 1px solid #d0d7de !important; transition: all 0.15s ease; }
+div.stDownloadButton > button:hover { background: #f3f4f6 !important; border-color: #0969da !important; color: #0969da !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(9,105,218,0.14); }
+
+.mobile-nav-label { display: none; }
+@media (max-width: 768px) {
+    .mobile-nav-label { display: block; margin-bottom: -10px; color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 1rem; }
+    .main-header { padding: 18px 16px; border-radius: 16px; }
+    .main-header h1 { font-size: 24px; line-height: 1.18; }
+    .main-header p { font-size: 14px; line-height: 1.5; }
+    .metric-card, .system-card, .attack-card, .info-box, .log-box { padding: 15px; border-radius: 15px; }
+    .metric-value { font-size: 25px; }
+    .status-value { font-size: 23px; }
+    div.stButton > button { min-height: 50px; font-size: 15px; }
+}
+
+/* ── Log box (light theme: white bg, dark text) ── */
+.log-box { background: #f6f8fa !important; font-family: 'Consolas','Courier New',monospace !important; border: 1px solid #d0d7de !important; }
+.log-box p, .log-box span, .log-box div, .log-box pre { color: #1f2328 !important; background: transparent !important; }
+.log-box code { color: #0550ae !important; background: rgba(175,184,193,0.20) !important; }
+
+/* ── Force light bg on all app containers (overrides base=dark) ── */
+[data-testid="stApp"], [data-testid="stAppViewContainer"],
+section.main, .main, [data-testid="stMain"],
+.stMainBlockContainer, [data-testid="stMainBlockContainer"] { background: #f6f8fa !important; }
+[data-testid="stHeader"], header[data-testid="stHeader"],
+[data-testid="stToolbar"] { background: #f6f8fa !important; }
+[data-testid="stToolbarActions"] svg, [data-testid="stToolbarActions"] button { color: #1f2328 !important; fill: #1f2328 !important; }
+[data-testid="stToolbarActions"] button:hover { background: #eaeef2 !important; }
+[data-testid="stDecoration"] { background: linear-gradient(90deg, #0969da, #0ea5e9) !important; }
+
+/* ── Native dark input/select overrides ── */
+[data-baseweb="base-input"] { background: #ffffff !important; }
+[data-baseweb="base-input"] input,
+[data-baseweb="base-input"] textarea { color: #1f2328 !important; background: #ffffff !important; }
+div[data-baseweb="input"] { background: #ffffff !important; border-color: #d0d7de !important; }
+div[data-baseweb="input"] input { color: #1f2328 !important; }
+[data-baseweb="tag"] { background: #dde3ec !important; }
+[data-baseweb="tag"] * { color: #1f2328 !important; }
+[data-testid="stWidgetLabel"] label,
+[data-testid="stWidgetLabel"] p { color: #1f2328 !important; }
+[data-testid="stNumberInputField"] { background: #ffffff !important; color: #1f2328 !important; }
+.stNumberInput button { background: #f3f4f6 !important; color: #1f2328 !important; border-color: #d0d7de !important; }
+"""
+
+
 def apply_custom_styles():
-    st.markdown(
-        """
-        <style>
-        .stApp {
-            background:
-                radial-gradient(circle at top left, rgba(37, 99, 235, 0.15), transparent 28%),
-                radial-gradient(circle at bottom right, rgba(147, 51, 234, 0.13), transparent 30%),
-                linear-gradient(135deg, #020617 0%, #0f172a 48%, #111827 100%);
-            color: #e5e7eb;
-        }
-
-        .block-container {
-            padding-top: 1.4rem;
-            padding-bottom: 2rem;
-            max-width: 1400px;
-        }
-
-        h1, h2, h3 {
-            color: #f8fafc !important;
-            letter-spacing: -0.03em;
-        }
-
-        p, span, label, div {
-            color: #e5e7eb;
-        }
-
-        code {
-            color: #bae6fd !important;
-            background: rgba(15, 23, 42, 0.95) !important;
-            border-radius: 8px;
-            padding: 2px 6px;
-        }
-
-        section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-            border-right: 1px solid rgba(148, 163, 184, 0.18);
-        }
-
-        section[data-testid="stSidebar"] * {
-            color: #e5e7eb !important;
-        }
-
-        .main-header {
-            padding: 24px 28px;
-            border-radius: 22px;
-            background:
-                linear-gradient(135deg, rgba(37, 99, 235, 0.35), rgba(14, 165, 233, 0.10)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(96, 165, 250, 0.30);
-            margin-bottom: 22px;
-            box-shadow: 0 16px 42px rgba(0, 0, 0, 0.30);
-        }
-
-        .main-header h1 {
-            margin-bottom: 8px;
-            font-size: 36px;
-            font-weight: 850;
-        }
-
-        .main-header p {
-            color: #cbd5e1;
-            font-size: 16px;
-            margin: 0;
-            max-width: 980px;
-        }
-
-        .red-header {
-            background:
-                linear-gradient(135deg, rgba(220, 38, 38, 0.46), rgba(127, 29, 29, 0.28)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(248, 113, 113, 0.52);
-        }
-
-        .blue-header {
-            background:
-                linear-gradient(135deg, rgba(37, 99, 235, 0.46), rgba(30, 64, 175, 0.28)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(96, 165, 250, 0.52);
-        }
-
-        .purple-header {
-            background:
-                linear-gradient(135deg, rgba(147, 51, 234, 0.46), rgba(88, 28, 135, 0.30)),
-                rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(192, 132, 252, 0.52);
-        }
-
-        .system-card,
-        .metric-card,
-        .attack-card,
-        .info-box,
-        .log-box {
-            padding: 18px;
-            border-radius: 18px;
-            background: rgba(15, 23, 42, 0.90);
-            border: 1px solid rgba(148, 163, 184, 0.16);
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.23);
-            margin-bottom: 16px;
-            transition: transform 0.18s ease, border 0.18s ease, box-shadow 0.18s ease;
-        }
-
-        .system-card:hover,
-        .metric-card:hover,
-        .attack-card:hover,
-        .info-box:hover {
-            transform: translateY(-3px);
-            border: 1px solid rgba(96, 165, 250, 0.48);
-            box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
-        }
-
-        .metric-label {
-            color: #94a3b8;
-            font-size: 12px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-
-        .metric-value {
-            color: #f8fafc;
-            font-size: 30px;
-            font-weight: 850;
-            line-height: 1.15;
-            word-break: break-word;
-        }
-
-        .metric-sub {
-            color: #64748b;
-            font-size: 12px;
-            margin-top: 8px;
-        }
-
-        .normal {
-            border-left: 5px solid #22c55e;
-        }
-
-        .warning {
-            border-left: 5px solid #eab308;
-        }
-
-        .danger {
-            border-left: 5px solid #ef4444;
-        }
-
-        .pump {
-            border-left: 5px solid #38bdf8;
-        }
-
-        .conveyor {
-            border-left: 5px solid #f97316;
-        }
-
-        .cooling {
-            border-left: 5px solid #a78bfa;
-        }
-
-        .status-card {
-            padding: 20px;
-            border-radius: 18px;
-            background: rgba(15, 23, 42, 0.94);
-            border: 1px solid rgba(148, 163, 184, 0.20);
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
-            margin-bottom: 18px;
-        }
-
-        .status-title {
-            font-size: 12px;
-            color: #94a3b8;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-
-        .status-value {
-            font-size: 28px;
-            font-weight: 850;
-            color: #f8fafc;
-        }
-
-        .attack-level {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            background: rgba(30, 41, 59, 0.9);
-            border: 1px solid rgba(148, 163, 184, 0.25);
-            margin-bottom: 10px;
-        }
-
-        div.stButton > button {
-            width: 100%;
-            border-radius: 12px;
-            min-height: 46px;
-            font-weight: 750;
-            border: 1px solid rgba(148, 163, 184, 0.25);
-            background: rgba(30, 41, 59, 0.92);
-            color: #f8fafc;
-            transition: all 0.15s ease;
-        }
-
-        div.stButton > button:hover {
-            border: 1px solid rgba(96, 165, 250, 0.85);
-            background: rgba(37, 99, 235, 0.32);
-            color: #ffffff;
-            transform: translateY(-1px);
-        }
-
-        div.stDownloadButton > button {
-            width: 100%;
-            border-radius: 12px;
-            min-height: 46px;
-            font-weight: 750;
-        }
-
-        .mobile-nav-label {
-            display: none;
-        }
-
-        @media (max-width: 768px) {
-            .mobile-nav-label {
-                display: block;
-                margin-bottom: -10px;
-                color: #94a3b8;
-                font-size: 13px;
-                text-transform: uppercase;
-                letter-spacing: 0.06em;
-            }
-
-            .block-container {
-                padding-left: 1rem;
-                padding-right: 1rem;
-                padding-top: 1rem;
-            }
-
-            .main-header {
-                padding: 18px 16px;
-                border-radius: 16px;
-            }
-
-            .main-header h1 {
-                font-size: 24px;
-                line-height: 1.18;
-            }
-
-            .main-header p {
-                font-size: 14px;
-                line-height: 1.5;
-            }
-
-            .metric-card,
-            .system-card,
-            .attack-card,
-            .info-box,
-            .log-box {
-                padding: 15px;
-                border-radius: 15px;
-            }
-
-            .metric-value {
-                font-size: 25px;
-            }
-
-            .status-value {
-                font-size: 23px;
-            }
-
-            div.stButton > button {
-                min-height: 50px;
-                font-size: 15px;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    theme = st.session_state.get("theme", "dark")
+    css = _DARK_CSS if theme == "dark" else _LIGHT_CSS
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
 def render_header(title, subtitle, variant="default"):
@@ -987,6 +1050,11 @@ st.sidebar.markdown(
     - PLC Modbus: `5020`
     """
 )
+
+theme_label = "☀ Світла тема" if st.session_state.theme == "dark" else "🌙 Темна тема"
+if st.sidebar.button(theme_label, key="theme_toggle"):
+    st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+    st.rerun()
 
 st.sidebar.divider()
 st.sidebar.caption("Diploma project: ICSCyberRange")
@@ -1999,85 +2067,104 @@ client.close()
 # ------------------------------------------------
 
 elif page == "Scenarios":
-    st.markdown(
-        """
+    _t = st.session_state.get("theme", "dark")
+    _dark = _t == "dark"
+    # ── palette variables ───────────────────────────────────────────────
+    _card_bg      = "rgba(15,23,42,0.92)"    if _dark else "#ffffff"
+    _card_bdr     = "rgba(148,163,184,0.18)" if _dark else "#d0d7de"
+    _hover_bdr    = "rgba(96,165,250,0.5)"   if _dark else "rgba(9,105,218,0.45)"
+    _sdone_bg     = "rgba(34,197,94,0.08)"   if _dark else "rgba(26,127,55,0.07)"
+    _sact_bg      = "rgba(234,179,8,0.10)"   if _dark else "rgba(154,103,0,0.08)"
+    _sact_bdr     = "rgba(234,179,8,0.40)"   if _dark else "rgba(154,103,0,0.30)"
+    _spnd_bg      = "rgba(15,23,42,0.60)"    if _dark else "rgba(246,248,250,0.85)"
+    _spnd_bdr     = "rgba(148,163,184,0.12)" if _dark else "#e8ecf0"
+    _quiz_bg      = "rgba(15,23,42,0.92)"    if _dark else "#ffffff"
+    _quiz_q       = "#f1f5f9"                if _dark else "#1f2328"
+    _score_bg     = "rgba(15,23,42,0.95)"    if _dark else "#ffffff"
+    _score_lbl    = "#94a3b8"                if _dark else "#57606a"
+    _bs_bg        = "rgba(37,99,235,0.25)"   if _dark else "rgba(9,105,218,0.10)"
+    _bs_col       = "#93c5fd"                if _dark else "#0969da"
+    _bs_bdr       = "rgba(96,165,250,0.35)"  if _dark else "rgba(9,105,218,0.30)"
+    _bm_bg        = "rgba(147,51,234,0.25)"  if _dark else "rgba(130,80,223,0.10)"
+    _bm_col       = "#c4b5fd"                if _dark else "#8250df"
+    _bm_bdr       = "rgba(192,132,252,0.35)" if _dark else "rgba(130,80,223,0.30)"
+    _mitre_bg     = "rgba(220,38,38,0.15)"   if _dark else "rgba(207,34,46,0.08)"
+    _mitre_col    = "#fca5a5"                if _dark else "#cf222e"
+    _mitre_bdr    = "rgba(248,113,113,0.30)" if _dark else "rgba(207,34,46,0.25)"
+    # inline text
+    _muted        = "#94a3b8"  if _dark else "#6e7781"
+    _desc_text    = "#cbd5e1"  if _dark else "#57606a"
+    _bold_text    = "#f8fafc"  if _dark else "#1f2328"
+    _done_col     = "#86efac"  if _dark else "#1a7f37"
+    _act_col      = "#fde68a"  if _dark else "#9a6700"
+    _pnd_col      = "#94a3b8"  if _dark else "#9198a1"
+    _step_desc    = "#cbd5e1"  if _dark else "#57606a"
+    _hint_col     = "#64748b"  if _dark else "#6e7781"
+
+    st.markdown(f"""
         <style>
-        .lvl-card {
-            padding: 18px 14px;
-            border-radius: 16px;
-            background: rgba(15,23,42,0.92);
-            border: 1px solid rgba(148,163,184,0.18);
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.18s ease;
-            margin-bottom: 4px;
-        }
-        .lvl-card:hover { border-color: rgba(96,165,250,0.5); transform: translateY(-2px); }
-        .lvl-beginner  { border-left: 5px solid #22c55e; }
-        .lvl-intermediate { border-left: 5px solid #eab308; }
-        .lvl-advanced  { border-left: 5px solid #ef4444; }
+        .lvl-card {{
+            padding: 18px 14px; border-radius: 16px;
+            background: {_card_bg}; border: 1px solid {_card_bdr};
+            text-align: center; cursor: pointer;
+            transition: all 0.18s ease; margin-bottom: 4px;
+        }}
+        .lvl-card:hover {{ border-color: {_hover_bdr}; transform: translateY(-2px); }}
+        .lvl-beginner     {{ border-left: 5px solid #22c55e; }}
+        .lvl-intermediate {{ border-left: 5px solid #eab308; }}
+        .lvl-advanced     {{ border-left: 5px solid #ef4444; }}
 
-        .step-done {
+        .step-done {{
             padding: 12px 16px; border-radius: 12px; margin-bottom: 8px;
-            background: rgba(34,197,94,0.08);
-            border: 1px solid rgba(34,197,94,0.25);
+            background: {_sdone_bg}; border: 1px solid rgba(34,197,94,0.25);
             border-left: 4px solid #22c55e;
-        }
-        .step-active {
+        }}
+        .step-active {{
             padding: 14px 18px; border-radius: 14px; margin-bottom: 8px;
-            background: rgba(234,179,8,0.10);
-            border: 1px solid rgba(234,179,8,0.40);
-            border-left: 5px solid #eab308;
-            box-shadow: 0 6px 22px rgba(0,0,0,0.22);
-        }
-        .step-pending {
+            background: {_sact_bg}; border: 1px solid {_sact_bdr};
+            border-left: 5px solid #eab308; box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+        }}
+        .step-pending {{
             padding: 12px 16px; border-radius: 12px; margin-bottom: 8px;
-            background: rgba(15,23,42,0.60);
-            border: 1px solid rgba(148,163,184,0.12);
-            border-left: 4px solid rgba(100,116,139,0.35);
-            opacity: 0.55;
-        }
+            background: {_spnd_bg}; border: 1px solid {_spnd_bdr};
+            border-left: 4px solid rgba(100,116,139,0.35); opacity: 0.60;
+        }}
 
-        .quiz-card {
+        .quiz-card {{
             padding: 20px; border-radius: 16px; margin-bottom: 14px;
-            background: rgba(15,23,42,0.92);
-            border: 1px solid rgba(148,163,184,0.18);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.20);
-        }
-        .quiz-badge-single {
+            background: {_quiz_bg}; border: 1px solid {_card_bdr};
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+        }}
+        .quiz-badge-single {{
             display: inline-block; padding: 3px 10px; border-radius: 999px;
             font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
-            background: rgba(37,99,235,0.25); color: #93c5fd;
-            border: 1px solid rgba(96,165,250,0.35); margin-bottom: 10px;
-        }
-        .quiz-badge-multi {
+            background: {_bs_bg}; color: {_bs_col};
+            border: 1px solid {_bs_bdr}; margin-bottom: 10px;
+        }}
+        .quiz-badge-multi {{
             display: inline-block; padding: 3px 10px; border-radius: 999px;
             font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
-            background: rgba(147,51,234,0.25); color: #c4b5fd;
-            border: 1px solid rgba(192,132,252,0.35); margin-bottom: 10px;
-        }
-        .quiz-question { font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 12px; }
+            background: {_bm_bg}; color: {_bm_col};
+            border: 1px solid {_bm_bdr}; margin-bottom: 10px;
+        }}
+        .quiz-question {{ font-size: 15px; font-weight: 600; color: {_quiz_q}; margin-bottom: 12px; }}
 
-        .score-block {
+        .score-block {{
             padding: 22px; border-radius: 18px; text-align: center;
-            background: rgba(15,23,42,0.95);
-            border: 1px solid rgba(96,165,250,0.30);
-            box-shadow: 0 12px 32px rgba(0,0,0,0.28);
-            margin-top: 8px;
-        }
-        .score-number { font-size: 52px; font-weight: 900; line-height: 1; }
-        .score-label  { font-size: 14px; color: #94a3b8; margin-top: 6px; }
+            background: {_score_bg}; border: 1px solid {_card_bdr};
+            box-shadow: 0 8px 24px rgba(0,0,0,0.10); margin-top: 8px;
+        }}
+        .score-number {{ font-size: 52px; font-weight: 900; line-height: 1; }}
+        .score-label  {{ font-size: 14px; color: {_score_lbl}; margin-top: 6px; }}
 
-        .mitre-badge {
+        .mitre-badge {{
             display: inline-block; padding: 5px 14px; border-radius: 999px;
             font-size: 12px; font-weight: 600;
-            background: rgba(220,38,38,0.15); color: #fca5a5;
-            border: 1px solid rgba(248,113,113,0.30);
-        }
+            background: {_mitre_bg}; color: {_mitre_col};
+            border: 1px solid {_mitre_bdr};
+        }}
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 
     render_header(
         "◈ Training Scenarios",
@@ -2142,10 +2229,10 @@ elif page == "Scenarios":
             <div class="system-card" style="border-left:5px solid {color};margin-top:6px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
                     <div>
-                        <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;
+                        <div style="font-size:11px;color:{_muted};text-transform:uppercase;
                                     letter-spacing:.06em;margin-bottom:6px;">{escape(diff)} level</div>
                         <h3 style="margin:0 0 8px;">{escape(scenario.get('title',''))}</h3>
-                        <p style="margin:0 0 8px;color:#cbd5e1;">{escape(scenario.get('description',''))}</p>
+                        <p style="margin:0 0 8px;color:{_desc_text};">{escape(scenario.get('description',''))}</p>
                         <p style="margin:0;"><b>Мета:</b> {escape(scenario.get('goal',''))}</p>
                     </div>
                     {
@@ -2165,8 +2252,8 @@ elif page == "Scenarios":
         current_step = st.session_state.get("scenario_step", 0)
 
         st.markdown(
-            f"<div style='margin:18px 0 6px;font-size:13px;color:#94a3b8;'>"
-            f"PROGRESS &nbsp; <b style='color:#f8fafc;'>{min(current_step, total_steps)}/{total_steps}</b>"
+            f"<div style='margin:18px 0 6px;font-size:13px;color:{_muted};'>"
+            f"PROGRESS &nbsp; <b style='color:{_bold_text};'>{min(current_step, total_steps)}/{total_steps}</b>"
             f" steps completed</div>",
             unsafe_allow_html=True
         )
@@ -2178,11 +2265,11 @@ elif page == "Scenarios":
 
         for i, step in enumerate(steps):
             if i < current_step:
-                css_cls, icon, title_color = "step-done",    "✓", "#86efac"
+                css_cls, icon, title_color = "step-done",    "✓", _done_col
             elif i == current_step:
-                css_cls, icon, title_color = "step-active",  "▶", "#fde68a"
+                css_cls, icon, title_color = "step-active",  "▶", _act_col
             else:
-                css_cls, icon, title_color = "step-pending", "○", "#94a3b8"
+                css_cls, icon, title_color = "step-pending", "○", _pnd_col
 
             st.markdown(
                 f"""
@@ -2190,7 +2277,7 @@ elif page == "Scenarios":
                     <div style="font-size:13px;color:{title_color};font-weight:700;margin-bottom:5px;">
                         {icon} &nbsp; Step {step['step']}: {escape(step['title'])}
                     </div>
-                    <div style="font-size:13px;color:#cbd5e1;line-height:1.55;">
+                    <div style="font-size:13px;color:{_step_desc};line-height:1.55;">
                         {escape(step['description'])}
                     </div>
                 </div>
@@ -2219,8 +2306,8 @@ elif page == "Scenarios":
         # ── Quiz ──────────────────────────────────────────────────────
         st.divider()
         st.markdown(
-            "<h3 style='margin-bottom:4px;'>Knowledge Check</h3>"
-            "<p style='color:#94a3b8;font-size:13px;margin-top:0;'>"
+            f"<h3 style='margin-bottom:4px;'>Knowledge Check</h3>"
+            f"<p style='color:{_muted};font-size:13px;margin-top:0;'>"
             "Перевір своє розуміння сценарію. Деякі питання мають кілька правильних відповідей.</p>",
             unsafe_allow_html=True
         )
@@ -2245,7 +2332,7 @@ elif page == "Scenarios":
                     <div class="quiz-card">
                         <span class="{badge_cls}">{badge_txt}</span>
                         <div class="quiz-question">
-                            Q{qi + 1}. {escape(quiz['text'])}<span style="color:#64748b;font-weight:400;font-size:13px;">{hint}</span>
+                            Q{qi + 1}. {escape(quiz['text'])}<span style="color:{_hint_col};font-weight:400;font-size:13px;">{hint}</span>
                         </div>
                     </div>
                     """,
@@ -2448,7 +2535,34 @@ elif page == "Statistics":
                 df = df[df["event_type"] == filter_type]
 
             display_cols = [c for c in ["timestamp", "event_type", "description"] if c in df.columns]
-            st.dataframe(df[display_cols], use_container_width=True, height=320)
+
+            if st.session_state.get("theme", "dark") == "light":
+                headers = "".join(
+                    f"<th style='padding:8px 14px;background:#f1f5f9;color:#57606a;"
+                    f"font-size:12px;font-weight:700;text-transform:uppercase;"
+                    f"letter-spacing:.05em;border-bottom:2px solid #d0d7de;"
+                    f"text-align:left;white-space:nowrap;'>{col}</th>"
+                    for col in display_cols
+                )
+                rows_html = ""
+                for _, row in df[display_cols].iterrows():
+                    cells = "".join(
+                        f"<td style='padding:7px 14px;border-bottom:1px solid #e8ecf0;"
+                        f"color:#1f2328;font-size:13px;'>{escape(str(row[col]))}</td>"
+                        for col in display_cols
+                    )
+                    rows_html += f"<tr>{cells}</tr>"
+                st.markdown(
+                    f"<div style='overflow:auto;max-height:320px;border-radius:10px;"
+                    f"border:1px solid #d0d7de;'>"
+                    f"<table style='width:100%;border-collapse:collapse;background:#ffffff;'>"
+                    f"<thead><tr>{headers}</tr></thead>"
+                    f"<tbody>{rows_html}</tbody>"
+                    f"</table></div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.dataframe(df[display_cols], use_container_width=True, height=320)
 
         except ImportError:
             for row in reversed(all_logs[-20:]):
